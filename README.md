@@ -216,7 +216,7 @@ MIT License - 欢迎star和fork！
 
 <div align="center">
 
-**如果你觉得这个项目有帮助，欢迎给我一个 ⭐**
+**如果你觉得这个项目有帮助，欢迎给我一个⭐**
 
 Made with ❤️ by [14sword](https://github.com/14sword)
 
