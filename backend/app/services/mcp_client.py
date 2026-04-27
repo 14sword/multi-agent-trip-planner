@@ -1,122 +1,144 @@
-import subprocess
 import json
 import os
 import time
 from typing import Optional, Dict, Any, List
+import httpx
 from app.config import settings
 
-class MCPTool:
-    def __init__(self, name: str, command: str, args: List[str], env: Dict[str, str], auto_expand: bool = True, max_retries: int = 3):
-        self.name = name
-        self.command = command
-        self.args = args
-        self.env = {**os.environ, **env}
-        self.auto_expand = auto_expand
-        self.max_retries = max_retries
-        self.process = None
+
+class RemoteMCPClient:
+    def __init__(self, server_url: str, api_key: str):
+        self.server_url = server_url
+        self.api_key = api_key
+        self.session_id = None
         self.tools = {}
         self._initialize()
 
     def _initialize(self):
-        print(f"🔧 初始化MCP工具: {self.name}")
-        for attempt in range(self.max_retries):
-            try:
-                self.process = subprocess.Popen(
-                    [self.command] + self.args,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=self.env,
-                    text=True,
-                    bufsize=1
-                )
-                time.sleep(0.5)  # 等待进程启动
-                if self.auto_expand:
-                    self._discover_tools()
-                print(f"✅ MCP工具初始化成功")
-                return
-            except Exception as e:
-                print(f"⚠️ MCP工具初始化失败 (尝试 {attempt + 1}/{self.max_retries}): {e}")
-                if self.process:
-                    self.process.terminate()
-                    self.process = None
-                if attempt < self.max_retries - 1:
-                    time.sleep(1)  # 等待后重试
-        print(f"❌ MCP工具初始化最终失败")
+        print(f"🔧 初始化远程MCP服务器: {self.server_url}")
+        try:
+            self._handshake()
+            self._discover_tools()
+            print(f"✅ 远程MCP工具初始化成功，发现 {len(self.tools)} 个工具")
+        except Exception as e:
+            print(f"❌ 远程MCP工具初始化失败: {e}")
 
-    def _discover_tools(self):
+    def _handshake(self):
+        print(f"  🔑 开始握手...")
         request = {
             "jsonrpc": "2.0",
             "id": 1,
+            "method": "initialize",
+            "params": {
+                "apiKey": self.api_key
+            }
+        }
+        response = httpx.post(
+            self.server_url,
+            json=request,
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json"
+            },
+            timeout=30.0
+        )
+        response.raise_for_status()
+        self.session_id = response.headers.get("Mcp-Session-Id")
+        print(f"  ✅ 握手成功，Session ID: {self.session_id[:16]}...")
+
+    def _discover_tools(self):
+        print(f"  🔍 开始发现工具...")
+        if not self.session_id:
+            print(f"  ⚠️ 没有Session ID，跳过工具发现")
+            return
+
+        request = {
+            "jsonrpc": "2.0",
+            "id": 2,
             "method": "tools/list",
             "params": {}
         }
-        response = self._send_request(request)
-        if response and "result" in response:
-            tools = response["result"].get("tools", [])
-            for tool in tools:
-                tool_name = tool.get("name", "")
-                self.tools[tool_name] = tool
-                print(f"  ✅ 发现工具: {tool_name}")
-        else:
-            print(f"  ⚠️ 未发现工具列表")
-
-    def _send_request(self, request: Dict[str, Any]) -> Optional[Dict]:
-        if not self.process or self.process.poll() is not None:
-            print(f"❌ MCP进程不可用")
-            return None
         try:
-            request_str = json.dumps(request) + "\n"
-            self.process.stdin.write(request_str)
-            self.process.stdin.flush()
-            # 等待响应，增加超时处理
-            import select
-            if select.select([self.process.stdout], [], [], 5)[0]:  # 5秒超时
-                response_str = self.process.stdout.readline()
-                if response_str:
-                    return json.loads(response_str)
+            response = httpx.post(
+                self.server_url,
+                json=request,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                    "Mcp-Session-Id": self.session_id
+                },
+                timeout=30.0
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            if "result" in data and "tools" in data["result"]:
+                tools = data["result"]["tools"]
+                for tool in tools:
+                    tool_name = tool.get("name", "")
+                    self.tools[tool_name] = tool
+                    print(f"  ✅ 发现工具: {tool_name}")
             else:
-                print(f"⚠️ MCP请求超时")
+                print(f"  ⚠️ 工具列表为空或格式未知")
         except Exception as e:
-            print(f"❌ MCP请求失败: {e}")
-        return None
+            print(f"  ⚠️ 工具发现失败: {e}")
 
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """调用工具，带重试机制"""
-        for attempt in range(self.max_retries):
+        if not self.session_id:
+            return "错误：未建立MCP会话"
+
+        for attempt in range(3):
             try:
                 request = {
                     "jsonrpc": "2.0",
-                    "id": 2,
+                    "id": int(time.time() * 1000),
                     "method": "tools/call",
                     "params": {
                         "name": tool_name,
                         "arguments": arguments
                     }
                 }
-                response = self._send_request(request)
-                if response and "result" in response:
-                    content = response["result"].get("content", [])
-                    if content and isinstance(content, list):
-                        result = content[0].get("text", "")
-                        if result and result != "工具调用失败":
-                            return result
-                        else:
-                            print(f"⚠️ 工具返回空结果 (尝试 {attempt + 1}/{self.max_retries})")
-                    else:
-                        print(f"⚠️ 工具返回格式错误 (尝试 {attempt + 1}/{self.max_retries})")
-                else:
-                    print(f"⚠️ 工具调用失败 (尝试 {attempt + 1}/{self.max_retries})")
                 
-                # 重试前等待
-                if attempt < self.max_retries - 1:
-                    time.sleep(0.5)
-                    
+                response = httpx.post(
+                    self.server_url,
+                    json=request,
+                    headers={
+                        "Accept": "application/json, text/event-stream",
+                        "Content-Type": "application/json",
+                        "Mcp-Session-Id": self.session_id
+                    },
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                if "result" in data:
+                    content = data["result"].get("content", [])
+                    if content and isinstance(content, list):
+                        return content[0].get("text", "工具调用返回空结果")
+                    return str(data["result"])
+                elif "error" in data:
+                    error_msg = data["error"].get("message", "未知错误")
+                    print(f"⚠️ 工具调用错误: {error_msg}")
+                    return f"错误: {error_msg}"
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    print(f"❌ 会话过期，重新握手...")
+                    if attempt < 2:
+                        try:
+                            self._handshake()
+                            continue
+                        except:
+                            pass
+                print(f"❌ HTTP错误 (尝试 {attempt + 1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(1)
             except Exception as e:
-                print(f"❌ 工具调用异常 (尝试 {attempt + 1}/{self.max_retries}): {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(0.5)
-        
+                print(f"❌ 工具调用异常 (尝试 {attempt + 1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(1)
+
         return "工具暂时不可用，请稍后重试"
 
     def get_tool(self, tool_name: str) -> Optional[Dict]:
@@ -124,10 +146,6 @@ class MCPTool:
 
     def list_tools(self) -> List[str]:
         return list(self.tools.keys())
-
-    def __del__(self):
-        if self.process:
-            self.process.terminate()
 
 
 class MCPClient:
@@ -137,42 +155,48 @@ class MCPClient:
 
     def _initialize_amap(self):
         print("🔧 初始化高德地图MCP...")
-        self.amap_tool = MCPTool(
-            name="amap_mcp",
-            command="npx",
-            args=["-y", "@sugarforever/amap-mcp-server"],
-            env={"AMAP_API_KEY": settings.AMAP_API_KEY},
-            auto_expand=True
-        )
+        amap_key = getattr(settings, 'AMAP_MAPS_API_KEY', None) or getattr(settings, 'AMAP_API_KEY', '')
+        mcp_url = os.getenv("AMAP_MCP_URL", "https://mcp.api-inference.modelscope.net/48a471a61b394f/mcp")
+        
+        print(f"  📡 远程MCP服务器: {mcp_url}")
+        print(f"  🔑 API Key: {'***' if amap_key else '未设置'}")
+        
+        try:
+            self.amap_tool = RemoteMCPClient(mcp_url, amap_key)
+        except Exception as e:
+            print(f"❌ 远程MCP初始化失败: {e}")
+            self.amap_tool = None
 
     def search_poi(self, keywords: str, city: str, types: str = "") -> str:
         if not self.amap_tool:
             return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("amap_maps_text_search", {
+        return self.amap_tool.call_tool("maps_text_search", {
             "keywords": keywords,
             "city": city,
-            "types": types
+            "citylimit": "false"
         })
 
     def get_weather(self, city: str) -> str:
         if not self.amap_tool:
             return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("amap_maps_weather", {
+        result = self.amap_tool.call_tool("maps_weather", {
             "city": city
         })
+        return result
 
     def get_distance(self, origin: str, destination: str) -> str:
         if not self.amap_tool:
             return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("amap_maps_distance", {
-            "origin": origin,
-            "destination": destination
+        return self.amap_tool.call_tool("maps_distance", {
+            "origins": origin,
+            "destination": destination,
+            "type": "1"
         })
 
     def get_route_driving(self, origin: str, destination: str) -> str:
         if not self.amap_tool:
             return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("amap_maps_driving", {
+        return self.amap_tool.call_tool("maps_direction_driving_by_coordinates", {
             "origin": origin,
             "destination": destination
         })

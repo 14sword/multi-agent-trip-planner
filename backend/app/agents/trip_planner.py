@@ -394,7 +394,35 @@ class TripPlannerAgent:
 【酒店信息】
 {hotel_info}
 
-请生成详细的旅行计划，包括每天的景点安排、餐饮推荐、住宿信息和预算明细。
+请生成非常详细的旅行计划，包括：
+1. 每天的详细景点安排，每个景点需要包含：
+   - 详细的景点描述（历史背景、特色亮点等）
+   - 建议游览时间
+   - 门票价格
+   - 开放时间
+   - 交通方式
+   - 游玩建议
+2. 详细的餐饮推荐，每个餐厅需要包含：
+   - 餐厅名称
+   - 推荐菜品
+   - 人均价格
+   - 餐厅地址
+   - 特色介绍
+3. 详细的住宿信息，包括：
+   - 酒店名称
+   - 酒店地址
+   - 价格区间
+   - 酒店设施
+   - 交通便利性
+4. 详细的预算明细，包括：
+   - 景点门票
+   - 餐饮费用
+   - 住宿费用
+   - 交通费用
+   - 其他费用
+5. 详细的天气信息和出行建议
+
+请确保生成的内容非常详细，能够为旅行者提供全面的参考信息。
 最后必须严格按照以下JSON格式输出：
 {json_template}
 """
@@ -477,14 +505,32 @@ class TripPlannerAgent:
             如果在限定次数内无法获取有效的JSON响应，
             将返回一个空的行程列表并附带错误提示。
         """
+        import time
+        
         print(f"\n{'='*60}")
         print(f"🧳 开始规划: {request.city} {request.days}天行程")
         print(f"{'='*60}")
 
+        # 1. 搜索景点
+        print(f"\n🔍 步骤1: 搜索{request.city}的景点...")
         attraction_info = self.search_attractions(request.city, request.preferences)
-        weather_info = self.query_weather(request.city)
-        hotel_info = self.search_hotels(request.city, request.accommodation)
+        print("✅ 景点搜索完成")
+        time.sleep(3)  # 增加延迟，减少API调用频率
 
+        # 2. 查询天气
+        print(f"\n🌤️ 步骤2: 查询{request.city}的天气...")
+        weather_info = self.query_weather(request.city)
+        print("✅ 天气查询完成")
+        time.sleep(3)  # 增加延迟，减少API调用频率
+
+        # 3. 搜索酒店
+        print(f"\n🏨 步骤3: 搜索{request.city}的酒店...")
+        hotel_info = self.search_hotels(request.city, request.accommodation)
+        print("✅ 酒店搜索完成")
+        time.sleep(3)  # 增加延迟，减少API调用频率
+
+        # 4. 生成旅行计划
+        print("\n📋 步骤4: 生成旅行计划...")
         plan_response = self.generate_plan(
             request, attraction_info, weather_info, hotel_info
         )
