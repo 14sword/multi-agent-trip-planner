@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
-from datetime import date
+import re
 
 class Location(BaseModel):
     longitude: float = Field(..., description="经度", ge=-180, le=180)
@@ -30,7 +30,7 @@ class Hotel(BaseModel):
     address: str = Field(default="", description="酒店地址")
     location: Optional[Location] = Field(default=None, description="酒店位置")
     price_range: str = Field(default="", description="价格范围")
-    rating: str = Field(default="", description="评分")
+    rating: Optional[float] = Field(default=None, ge=0, le=5, description="评分")
     distance: str = Field(default="", description="距离景点距离")
     type: str = Field(default="", description="酒店类型")
     estimated_cost: int = Field(default=0, ge=0, description="预估费用(元/晚)")
@@ -61,6 +61,7 @@ class WeatherInfo(BaseModel):
     wind_direction: str = Field(..., description="风向")
     wind_power: str = Field(..., description="风力")
 
+    @field_validator("day_temp", "night_temp", mode="before")
     @classmethod
     def parse_temp(cls, v):
         if isinstance(v, str):
@@ -72,14 +73,29 @@ class WeatherInfo(BaseModel):
         return v
 
 class TripPlanRequest(BaseModel):
-    city: str = Field(..., description="目的地城市")
+    city: str = Field(..., description="目的地城市", min_length=1, max_length=50)
     start_date: str = Field(..., description="开始日期 YYYY-MM-DD")
     end_date: str = Field(..., description="结束日期 YYYY-MM-DD")
-    days: int = Field(..., description="天数", gt=0)
+    days: int = Field(..., description="天数", gt=0, le=30)
     preferences: str = Field(default="历史文化", description="偏好")
     budget: str = Field(default="中等", description="预算")
     transportation: str = Field(default="公共交通", description="交通方式")
     accommodation: str = Field(default="经济型酒店", description="住宿类型")
+
+    @field_validator("city")
+    @classmethod
+    def sanitize_city(cls, v: str) -> str:
+        v = v.strip()
+        if not re.match(r'^[一-龥a-zA-Z\s\-·]+$', v):
+            raise ValueError("城市名称包含非法字符")
+        return v
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+            raise ValueError("日期格式必须为 YYYY-MM-DD")
+        return v
 
 class TripPlan(BaseModel):
     city: str = Field(..., description="目的地城市")

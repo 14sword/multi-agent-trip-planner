@@ -150,10 +150,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { generateTripPlan } from '@/services/api'
+import { generateTripPlan, ApiError } from '@/services/api'
 import type { TripPlanRequest } from '@/types'
 import dayjs, { Dayjs } from 'dayjs'
 
@@ -163,6 +163,9 @@ const loading = ref(false)
 const loadingProgress = ref(0)
 const loadingStatus = ref('')
 const loadingDetails = ref<string[]>([])
+
+let abortController: AbortController | null = null
+let progressTimer: ReturnType<typeof setInterval> | null = null
 
 const startDate = ref<Dayjs | null>(null)
 const endDate = ref<Dayjs | null>(null)
@@ -216,6 +219,11 @@ const updateDays = () => {
   }
 }
 
+onBeforeUnmount(() => {
+  abortController?.abort()
+  if (progressTimer) clearInterval(progressTimer)
+})
+
 const handleSubmit = async () => {
   if (!formData.value.city.trim()) {
     message.error('请输入目的地城市')
@@ -227,86 +235,50 @@ const handleSubmit = async () => {
     return
   }
 
+  abortController = new AbortController()
   loading.value = true
   loadingProgress.value = 0
 
   loadingDetails.value = [
-    '📋 准备规划参数...',
-    '🔍 开始搜索景点信息...',
+    '🔍 搜索景点信息...',
     '🌤️ 查询目的地天气...',
     '🏨 推荐合适的住宿...',
-    '💰 计算旅行预算...',
     '📅 生成每日行程...',
-    '🗺️ 规划景点路线...',
-    '📝 整理最终计划...'
   ]
 
-  let step = 0
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 95) {
-      // 限制最大值并四舍五入为整数
-      loadingProgress.value = Math.min(Math.round(loadingProgress.value + Math.random() * 8 + 3), 95)
-      
-      // 根据进度更新状态
-      if (loadingProgress.value <= 15) {
-        loadingStatus.value = '📋 准备规划参数...'
-        step = 0
-      } else if (loadingProgress.value <= 30) {
-        loadingStatus.value = '🔍 正在搜索景点...'
-        step = 1
-      } else if (loadingProgress.value <= 45) {
-        loadingStatus.value = '🌤️ 正在查询天气...'
-        step = 2
-      } else if (loadingProgress.value <= 60) {
-        loadingStatus.value = '🏨 正在推荐酒店...'
-        step = 3
-      } else if (loadingProgress.value <= 70) {
-        loadingStatus.value = '💰 计算旅行预算...'
-        step = 4
-      } else if (loadingProgress.value <= 80) {
-        loadingStatus.value = '📅 生成每日行程...'
-        step = 5
-      } else if (loadingProgress.value <= 90) {
-        loadingStatus.value = '🗺️ 规划景点路线...'
-        step = 6
-      } else {
-        loadingStatus.value = '📝 整理最终计划...'
-        step = 7
-      }
+  const steps = [
+    { at: 15, text: '🔍 正在搜索景点...' },
+    { at: 35, text: '🌤️ 正在查询天气...' },
+    { at: 55, text: '🏨 正在推荐酒店...' },
+    { at: 75, text: '📅 生成每日行程...' },
+    { at: 90, text: '📝 整理最终计划...' },
+  ]
+
+  progressTimer = setInterval(() => {
+    if (loadingProgress.value < 90) {
+      loadingProgress.value = Math.min(loadingProgress.value + Math.random() * 5 + 2, 90)
+      const current = [...steps].reverse().find(s => loadingProgress.value >= s.at)
+      if (current) loadingStatus.value = current.text
     }
-  }, 800)
+  }, 1500)
 
   try {
-    const response = await generateTripPlan(formData.value)
-    clearInterval(progressInterval)
+    const response = await generateTripPlan(formData.value, abortController.signal)
+    if (progressTimer) clearInterval(progressTimer)
     loadingProgress.value = 100
     loadingStatus.value = '✅ 完成！'
 
     sessionStorage.setItem('tripPlan', JSON.stringify(response))
-
-    setTimeout(() => {
-      router.push({ name: 'result' })
-    }, 500)
-  } catch (error: any) {
-    clearInterval(progressInterval)
-    
-    // 增强的错误处理
-    if (error.enhanced) {
-      message.error({
-        content: `
-          <div style="padding: 8px">
-            <div style="font-weight: bold; margin-bottom: 4px">${error.errorMessage}</div>
-            <div style="font-size: 12px; color: #666; margin-bottom: 8px">${error.errorDetails}</div>
-            <div style="font-size: 12px; color: #8b5cf6">💡 ${error.solution}</div>
-          </div>
-        `,
-        duration: 5
-      })
+    setTimeout(() => router.push({ name: 'result' }), 400)
+  } catch (error: unknown) {
+    if (progressTimer) clearInterval(progressTimer)
+    if (error instanceof ApiError) {
+      message.error(`${error.message}${error.solution ? '，' + error.solution : ''}`, 5)
+    } else if (error instanceof Error && error.name === 'AbortError') {
+      // user navigated away or cancelled — do nothing
     } else {
       message.error('生成计划失败，请稍后重试')
     }
-    
-    console.error('生成计划失败:', error)
   } finally {
     loading.value = false
   }

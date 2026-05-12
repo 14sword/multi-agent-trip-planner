@@ -8,16 +8,14 @@
     </a-spin>
 
     <div v-else-if="error" class="error-container">
-      <a-alert
-        message="加载失败"
-        description="无法加载行程数据，请返回首页重新规划"
-        type="error"
-        show-icon
-        style="max-width: 600px; margin: 40px auto"
+      <EmptyState
+        icon="📋"
+        title="无法加载行程"
+        description="行程数据为空或已过期，请返回首页重新规划"
+        actionText="返回首页"
+        :tips="['确保从首页提交规划请求', '刷新页面后重试']"
+        @action="$router.push('/')"
       />
-      <div style="text-align: center; margin-top: 20px">
-        <a-button type="primary" @click="$router.push('/')">返回首页</a-button>
-      </div>
     </div>
 
     <div v-else>
@@ -379,11 +377,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import type { TripPlan, DayPlan } from '@/types'
-import { editTripPlan } from '@/services/api'
+import { editTripPlan, ApiError } from '@/services/api'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import EmptyState from '@/components/EmptyState.vue'
 
 const tripPlan = ref<TripPlan>({
   city: '',
@@ -407,6 +406,15 @@ const expandedAttractions = ref<Record<string, boolean>>({})
 const shareVisible = ref(false)
 const isFavorite = ref(false)
 let map: any = null
+let abortController: AbortController | null = null
+
+onBeforeUnmount(() => {
+  abortController?.abort()
+  if (map) {
+    map.destroy()
+    map = null
+  }
+})
 
 onMounted(() => {
   const savedPlan = sessionStorage.getItem('tripPlan')
@@ -417,8 +425,7 @@ onMounted(() => {
       nextTick(() => {
         initMap()
       })
-    } catch (e) {
-      console.error('解析行程数据失败:', e)
+    } catch {
       error.value = true
     } finally {
       loading.value = false
@@ -432,163 +439,103 @@ onMounted(() => {
 const initMap = async () => {
   mapLoading.value = true
   try {
-    console.log('🗺️ 开始初始化地图...')
-    
-    // 确保容器存在
     const mapContainer = document.getElementById('amap-container')
     if (!mapContainer) {
-      console.error('❌ 找不到地图容器')
       message.error('找不到地图容器')
       return
     }
 
-    // 设置容器高度，确保地图能显示
     mapContainer.style.height = '400px'
     mapContainer.style.width = '100%'
     mapContainer.style.border = '1px solid #d9d9d9'
     mapContainer.style.background = '#f5f5f5'
 
-    console.log('✅ 地图容器准备就绪')
-    
-    // 尝试加载高德地图API
     try {
       const AMap = await AMapLoader.load({
-        key: 'a2715a65d0e78dbd3c59a6ea69bdac9e',
+        key: import.meta.env.VITE_AMAP_KEY || '',
         version: '2.0',
         plugins: ['AMap.Scale', 'AMap.ToolBar', 'AMap.InfoWindow']
       })
 
-      console.log('✅ 高德地图API加载成功')
-
-      // 如果地图已存在，先销毁
       if (map) {
         map.destroy()
         map = null
       }
 
-      // 检查是否有景点数据
-      if (tripPlan.value.days.length > 0 && tripPlan.value.days[0].attractions.length > 0) {
-        const firstAttraction = tripPlan.value.days[0].attractions[0]
-        console.log('📍 第一个景点:', firstAttraction.name, '坐标:', firstAttraction.location)
-        
-        // 确保景点有位置信息
-        if (firstAttraction.location && firstAttraction.location.longitude && firstAttraction.location.latitude) {
-          map = new AMap.Map(mapContainer, {
-            zoom: 12,
-            center: [firstAttraction.location.longitude, firstAttraction.location.latitude],
-            resizeEnable: true,
-            zoomEnable: true,
-            dragEnable: true
+      const firstAttraction = tripPlan.value.days[0]?.attractions[0]
+      const hasLocation = firstAttraction?.location?.longitude && firstAttraction?.location?.latitude
+
+      map = new AMap.Map(mapContainer, {
+        zoom: 12,
+        center: hasLocation
+          ? [firstAttraction.location.longitude, firstAttraction.location.latitude]
+          : [116.397428, 39.90923],
+        resizeEnable: true,
+        zoomEnable: true,
+        dragEnable: true,
+      })
+
+      map.addControl(new AMap.Scale())
+      map.addControl(new AMap.ToolBar())
+
+      const allPositions: [number, number][] = []
+
+      tripPlan.value.days.forEach((day) => {
+        day.attractions.forEach((attraction, index) => {
+          const loc = attraction.location
+          if (!loc?.longitude || !loc?.latitude) return
+
+          const position: [number, number] = [loc.longitude, loc.latitude]
+          allPositions.push(position)
+
+          const marker = new AMap.Marker({
+            position,
+            title: attraction.name,
+            label: {
+              content: `${day.day_index + 1}-${index + 1}`,
+              direction: 'top',
+              offset: new AMap.Pixel(0, -30),
+              style: {
+                backgroundColor: '#1890ff',
+                color: '#fff',
+                border: 'none',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontSize: '12px',
+              },
+            },
           })
 
-          console.log('✅ 地图实例创建成功')
-
-          // 添加缩放控件和比例尺
-          map.addControl(new AMap.Scale())
-          map.addControl(new AMap.ToolBar())
-
-          // 添加所有景点标记和路线
-          const allPositions: any[] = [] // 存储所有景点的位置
-          
-          tripPlan.value.days.forEach((day) => {
-            day.attractions.forEach((attraction, index) => {
-              if (attraction.location && attraction.location.longitude && attraction.location.latitude) {
-                console.log(`📍 添加标记: ${attraction.name}`)
-                
-                const position = [attraction.location.longitude, attraction.location.latitude]
-                allPositions.push(position)
-                
-                const marker = new AMap.Marker({
-                  position: position,
-                  title: attraction.name,
-                  label: {
-                    content: `${day.day_index + 1}-${index + 1}`,
-                    direction: 'top',
-                    offset: new AMap.Pixel(0, -30),
-                    style: {
-                      backgroundColor: '#1890ff',
-                      color: '#fff',
-                      border: 'none',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }
-                  }
-                })
-
-                // 创建信息窗口
-                const infoWindow = new AMap.InfoWindow({
-                  content: `
-                    <div style="padding: 10px; min-width: 200px;">
-                      <h3 style="margin: 0 0 10px 0; font-size: 14px;">${attraction.name}</h3>
-                      <p style="margin: 5px 0; font-size: 12px;">📍 ${attraction.address}</p>
-                      <p style="margin: 5px 0; font-size: 12px;">⏱️ 建议游览 ${attraction.visit_duration} 分钟</p>
-                      ${attraction.ticket_price ? `<p style="margin: 5px 0; font-size: 12px;">🎫 门票: ${attraction.ticket_price}元</p>` : ''}
-                      ${attraction.rating ? `<p style="margin: 5px 0; font-size: 12px;">⭐ 评分: ${attraction.rating}</p>` : ''}
-                    </div>
-                  `,
-                  offset: new AMap.Pixel(0, -40)
-                })
-
-                // 绑定点击事件
-                marker.on('click', function(e: any) {
-                  infoWindow.open(map, marker.getPosition())
-                })
-
-                map.add(marker)
-              } else {
-                console.warn(`⚠️ 景点 ${attraction.name} 缺少位置信息`)
-              }
-            })
+          const infoWindow = new AMap.InfoWindow({
+            content: `
+              <div style="padding: 10px; min-width: 200px;">
+                <h3 style="margin: 0 0 10px 0; font-size: 14px;">${attraction.name}</h3>
+                <p style="margin: 5px 0; font-size: 12px;">📍 ${attraction.address}</p>
+                <p style="margin: 5px 0; font-size: 12px;">⏱️ 建议游览 ${attraction.visit_duration} 分钟</p>
+                ${attraction.ticket_price ? `<p style="margin: 5px 0; font-size: 12px;">🎫 门票: ${attraction.ticket_price}元</p>` : ''}
+                ${attraction.rating ? `<p style="margin: 5px 0; font-size: 12px;">⭐ 评分: ${attraction.rating}</p>` : ''}
+              </div>
+            `,
+            offset: new AMap.Pixel(0, -40),
           })
-          
-          // 绘制游览路线（连接所有景点）
-          if (allPositions.length > 1) {
-            console.log(`✏️ 开始绘制游览路线，共 ${allPositions.length} 个景点`)
-            
-            const polyline = new AMap.Polyline({
-              path: allPositions,
-              strokeColor: '#1890ff', // 蓝色线条
-              strokeWeight: 4, // 线条宽度
-              strokeOpacity: 0.8, // 透明度
-              lineJoin: 'round', // 连接处样式
-              lineCap: 'round' // 端点样式
-            })
-            
-            map.add(polyline)
-            console.log('✅ 游览路线绘制完成')
-          }
-          
-          console.log('✅ 所有标记添加完成')
-        } else {
-          console.warn('⚠️ 第一个景点缺少位置信息，使用默认位置')
-          // 使用默认位置
-          map = new AMap.Map(mapContainer, {
-            zoom: 12,
-            center: [116.397428, 39.90923], // 北京
-            resizeEnable: true,
-            zoomEnable: true,
-            dragEnable: true
-          })
-        }
-      } else {
-        console.log('⚠️ 没有景点数据，显示默认位置')
-        // 如果没有景点数据，显示一个默认位置
-        map = new AMap.Map(mapContainer, {
-          zoom: 12,
-          center: [116.397428, 39.90923], // 北京
-          resizeEnable: true,
-          zoomEnable: true,
-          dragEnable: true
+
+          marker.on('click', () => infoWindow.open(map, marker.getPosition()))
+          map.add(marker)
         })
+      })
+
+      if (allPositions.length > 1) {
+        map.add(new AMap.Polyline({
+          path: allPositions,
+          strokeColor: '#1890ff',
+          strokeWeight: 4,
+          strokeOpacity: 0.8,
+          lineJoin: 'round',
+          lineCap: 'round',
+        }))
       }
-      
-      console.log('✅ 地图初始化完成')
-    } catch (apiError) {
-      console.error('❌ 高德地图API加载失败:', apiError)
+    } catch {
       message.error('高德地图API加载失败，请检查网络连接')
-      
-      // 显示错误提示
       mapContainer.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
           <div style="text-align: center;">
@@ -598,9 +545,8 @@ const initMap = async () => {
         </div>
       `
     }
-  } catch (error) {
-    console.error('❌ 地图初始化失败:', error)
-    message.error('地图初始化失败: ' + error)
+  } catch {
+    message.error('地图初始化失败')
   } finally {
     mapLoading.value = false
   }
@@ -623,19 +569,22 @@ const toggleEditMode = () => {
 }
 
 const saveChanges = async () => {
+  abortController = new AbortController()
   saving.value = true
   try {
-    const updatedPlan = await editTripPlan(tripPlan.value)
+    const updatedPlan = await editTripPlan(tripPlan.value, abortController.signal)
     tripPlan.value = updatedPlan
+    sessionStorage.setItem('tripPlan', JSON.stringify(updatedPlan))
     editMode.value = false
-    saving.value = false
     message.success('修改已保存')
-    nextTick(() => {
-      initMap()
-    })
-  } catch (error) {
-    console.error('保存失败:', error)
-    message.error('保存失败，请稍后重试')
+    nextTick(() => initMap())
+  } catch (error: unknown) {
+    if (error instanceof ApiError) {
+      message.error(`${error.message}${error.solution ? '，' + error.solution : ''}`)
+    } else if (!(error instanceof Error && error.name === 'AbortError')) {
+      message.error('保存失败，请稍后重试')
+    }
+  } finally {
     saving.value = false
   }
 }

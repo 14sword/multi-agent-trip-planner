@@ -1,6 +1,9 @@
+import logging
 import requests
 from typing import Optional, List, Dict
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 class UnsplashService:
     def __init__(self):
@@ -28,7 +31,7 @@ class UnsplashService:
                 })
             return photos
         except Exception as e:
-            print(f"❌ 搜索图片失败: {e}")
+            logger.warning(f"搜索图片失败: {e}")
             return []
 
     def get_photo_url(self, query: str) -> Optional[str]:

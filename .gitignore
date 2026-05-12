@@ -37,6 +37,8 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+API_KEYS.md
+API_KEYS*.md
 
 # Test
 .coverage
@@ -55,6 +57,9 @@ build/
 # Trae IDE
 .trae/
 .trae-internal/
+
+# Claude Code
+.claude/
 
 # macOS
 .DS_Store
