@@ -24,8 +24,9 @@
 |------|------|
 | 🤖 **Multi-Agent架构** | 4个专业Agent并行协作，模拟真实旅行顾问团队 |
 | 🔗 **MCP协议应用** | 创新性地将Model Context Protocol应用于工具调用 |
-| 🧠 **LLM智能决策** | 利用大语言模型理解用户意图，生成合理行程 |
-| 🗺️ **路线可视化** | 高德地图API实现景点路线展示 |
+| 🧠 **Function Calling** | LLM结构化输出，保证行程数据格式稳定可靠 |
+| 🗺️ **贝塞尔弧线地图** | 高德地图API + BezierCurve 实现景点间弧线路径 |
+| 🎨 **设计系统** | 自定义 CSS 变量体系 + 微交互动画库 |
 | 📱 **响应式设计** | 适配移动端和桌面端，提供一致体验 |
 
 ---
@@ -38,7 +39,7 @@
 
 ### 难点2：LLM输出格式控制
 **问题**：LLM生成的行程数据格式不稳定，难以直接使用
-**解决**：设计严格的Prompt工程，结合JSON解析和格式验证，确保输出可用。
+**解决**：采用Function Calling强制结构化输出 + 正则解析兜底，双保险确保JSON可用。
 
 ### 难点3：用户体验与功能的平衡
 **问题**：功能复杂但要保持界面简洁
@@ -60,7 +61,7 @@
 <div>
 <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
 <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-<img src="https://img.shields.io/badge/LLM-GPT--4o--mini?style=for-the-badge&logo=openai&logoColor=white" alt="LLM">
+<img src="https://img.shields.io/badge/LLM-MiMo--v2.5--pro%20%7C%20DeepSeek?style=for-the-badge&logo=xiaomi&logoColor=white" alt="LLM">
 <img src="https://img.shields.io/badge/MCP-FF6B6B?style=for-the-badge" alt="MCP Protocol">
 </div>
 
@@ -75,14 +76,16 @@
 ## 📋 核心功能
 
 - [x] **AI行程规划**：输入目的地和偏好，生成完整旅行方案
-- [x] **多Agent协作**：景点/天气/酒店专家Agent智能协作
-- [x] **高德地图展示**：景点位置和路线可视化
-- [x] **每日行程详情**：景点、时间、费用一目了然
-- [x] **天气预报查询**：出发地/目的地实时天气
+- [x] **多Agent协作**：景点/天气/酒店专家Agent并行工作，智能决策
+- [x] **Function Calling**：LLM结构化输出，JSON格式稳定可靠
+- [x] **贝塞尔弧线地图**：景点间弧线路径 + 方向箭头，告别直线连接
+- [x] **深度旅行内容**：景点100-150字介绍 + 餐饮推荐 + 实用Tips
+- [x] **天气智能适配**：雨天安排室内景点，高温避开正午暴晒
 - [x] **行程编辑调整**：灵活修改行程安排
 - [x] **预算自动计算**：智能费用估算
 - [x] **PDF导出**：一键导出旅行计划
 - [x] **本地收藏**：保存喜欢的行程
+- [x] **14项单元测试**：核心逻辑测试覆盖
 
 ---
 
@@ -151,7 +154,7 @@ cp .env.example .env  # 配置API密钥
 uvicorn app.main:app --reload --port 8000
 
 # 2. 前端
-cd frontend && npm install
+cd frontend-redesigned && npm install
 npm run dev
 ```
 

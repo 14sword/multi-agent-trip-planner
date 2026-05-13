@@ -1,8 +1,9 @@
 import os
 import logging
 import time
+import json
 from openai import OpenAI
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -70,4 +71,43 @@ class HelloAgentsLLM:
                 logger.warning(f"API调用失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY * (attempt + 1))
+        return None
+
+    def think_structured(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0
+    ) -> Optional[Dict[str, Any]]:
+        """Call LLM with function calling, return the parsed tool call arguments."""
+        for attempt in range(MAX_RETRIES):
+            try:
+                logger.info(f"结构化输出请求: {self.model} (尝试 {attempt + 1}/{MAX_RETRIES})")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    tools=tools,
+                    tool_choice={"type": "function", "function": {"name": tools[0]["function"]["name"]}},
+                    stream=False,
+                )
+
+                choice = response.choices[0]
+                if choice.message.tool_calls:
+                    args_str = choice.message.tool_calls[0].function.arguments
+                    logger.info(f"结构化输出完成，参数长度: {len(args_str)}")
+                    return json.loads(args_str)
+
+                # Fallback: model didn't call the tool, try to extract from content
+                logger.warning("模型未调用工具，尝试从文本提取JSON")
+                return None
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON解析失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY * (attempt + 1))
+            except Exception as e:
+                logger.warning(f"结构化输出失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY * (attempt + 1))
+        logger.error(f"结构化输出{MAX_RETRIES}次均失败")
         return None

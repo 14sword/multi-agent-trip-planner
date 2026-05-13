@@ -247,14 +247,119 @@ class TripPlannerAgent:
         query = f"请搜索{city}的{accommodation}，预算档位：{budget}，返回酒店名称、地址、价格范围、评分和亮点等信息。"
         return self.hotel_agent.run(query)
 
+    # Function calling schema for structured trip plan output
+    TRIP_PLAN_TOOL = {
+        "type": "function",
+        "function": {
+            "name": "generate_trip_plan",
+            "description": "生成结构化的旅行计划，包含每日行程、景点、餐饮、住宿和预算",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string", "description": "目的地城市"},
+                    "start_date": {"type": "string", "description": "开始日期 YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "结束日期 YYYY-MM-DD"},
+                    "days": {
+                        "type": "array",
+                        "description": "每日行程安排",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "date": {"type": "string", "description": "日期 YYYY-MM-DD"},
+                                "day_index": {"type": "integer", "description": "第几天从0开始"},
+                                "description": {"type": "string", "description": "当日主题概述"},
+                                "transportation": {"type": "string", "description": "交通方式"},
+                                "accommodation": {"type": "string", "description": "住宿安排"},
+                                "hotel": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "address": {"type": "string"},
+                                        "price_range": {"type": "string"},
+                                        "rating": {"type": "number"},
+                                        "estimated_cost": {"type": "integer"}
+                                    }
+                                },
+                                "attractions": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "address": {"type": "string"},
+                                            "location": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "longitude": {"type": "number"},
+                                                    "latitude": {"type": "number"}
+                                                }
+                                            },
+                                            "visit_duration": {"type": "integer", "description": "游览时间(分钟)"},
+                                            "description": {"type": "string", "description": "景点深度介绍100-150字"},
+                                            "category": {"type": "string"},
+                                            "rating": {"type": "number"},
+                                            "ticket_price": {"type": "integer"}
+                                        }
+                                    }
+                                },
+                                "meals": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "type": {"type": "string", "enum": ["breakfast", "lunch", "dinner", "snack"]},
+                                            "name": {"type": "string"},
+                                            "address": {"type": "string"},
+                                            "description": {"type": "string"},
+                                            "estimated_cost": {"type": "integer"}
+                                        }
+                                    }
+                                }
+                            },
+                            "required": ["date", "day_index", "description", "transportation", "accommodation", "attractions", "meals"]
+                        }
+                    },
+                    "weather_info": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "date": {"type": "string"},
+                                "day_weather": {"type": "string"},
+                                "night_weather": {"type": "string"},
+                                "day_temp": {"type": "integer"},
+                                "night_temp": {"type": "integer"},
+                                "wind_direction": {"type": "string"},
+                                "wind_power": {"type": "string"}
+                            }
+                        }
+                    },
+                    "overall_suggestions": {"type": "string", "description": "5-8条实用旅行建议，每条一行"},
+                    "budget": {
+                        "type": "object",
+                        "properties": {
+                            "total_attractions": {"type": "integer"},
+                            "total_hotels": {"type": "integer"},
+                            "total_meals": {"type": "integer"},
+                            "total_transportation": {"type": "integer"},
+                            "total": {"type": "integer"}
+                        }
+                    }
+                },
+                "required": ["city", "start_date", "end_date", "days", "weather_info", "overall_suggestions", "budget"]
+            }
+        }
+    }
+
     def generate_plan(
         self,
         request: TripPlanRequest,
         attraction_info: str,
         weather_info: str,
         hotel_info: str
-    ) -> str:
-        logger.info("生成旅行计划...")
+    ) -> Optional[dict]:
+        """Generate trip plan using function calling for structured output, with regex fallback."""
+        logger.info("生成旅行计划（function calling）...")
 
         query = PLANNER_AGENT_PROMPT.format(
             city=request.city,
@@ -270,9 +375,26 @@ class TripPlannerAgent:
             hotel_info=hotel_info,
         )
 
-        result = self.planner_agent.run(query, show_thinking=True)
-        logger.info("计划生成完成")
-        return result
+        messages = [
+            {"role": "system", "content": "你是经验丰富的旅行规划师。根据已收集的信息，调用 generate_trip_plan 生成结构化的旅行计划。所有数据必须来自提供的景点/天气/酒店信息，不要编造。"},
+            {"role": "user", "content": query}
+        ]
+
+        # Try function calling first
+        result = self.llm.think_structured(
+            messages=messages,
+            tools=[self.TRIP_PLAN_TOOL],
+            temperature=0
+        )
+
+        if result and "city" in result and "days" in result:
+            logger.info("Function calling 输出成功")
+            return result
+
+        # Fallback: use ToolAwareAgent with regex parsing
+        logger.info("Function calling 未成功，回退到文本解析...")
+        text_result = self.planner_agent.run(query, show_thinking=True)
+        return self.parse_json_response(text_result)
 
     def parse_json_response(self, response: str) -> Optional[dict]:
         """
@@ -342,9 +464,8 @@ class TripPlannerAgent:
 
         # 生成旅行计划
         logger.info("生成旅行计划...")
-        plan_response = self.generate_plan(request, attraction_info, weather_info, hotel_info)
+        plan_data = self.generate_plan(request, attraction_info, weather_info, hotel_info)
 
-        plan_data = self.parse_json_response(plan_response)
         if plan_data:
             logger.info("旅行计划生成成功")
             return TripPlan(**plan_data)

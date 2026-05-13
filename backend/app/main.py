@@ -39,12 +39,23 @@ app.add_middleware(
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
 RATE_LIMIT_REQUESTS = 10  # 窗口内最大请求数
 RATE_LIMIT_WINDOW = 60    # 窗口秒数
+_last_cleanup = time.time()
+CLEANUP_INTERVAL = 300    # 每5分钟清理一次过期key
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/"):
+        global _last_cleanup
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
+
+        # 定期清理过期key，防止内存无限增长
+        if now - _last_cleanup > CLEANUP_INTERVAL:
+            _last_cleanup = now
+            empty_keys = [k for k, v in _rate_limit_store.items() if not v or now - v[-1] > RATE_LIMIT_WINDOW * 2]
+            for k in empty_keys:
+                del _rate_limit_store[k]
+
         key = f"{client_ip}:{request.url.path}"
         _rate_limit_store[key] = [t for t in _rate_limit_store[key] if now - t < RATE_LIMIT_WINDOW]
         if len(_rate_limit_store[key]) >= RATE_LIMIT_REQUESTS:

@@ -97,7 +97,12 @@
                 </div>
               </div>
               <div class="overview-suggestion">
-                <p>{{ tripPlan.overall_suggestions }}</p>
+                <ul class="suggestion-list">
+                  <li v-for="(item, i) in parseSuggestions(tripPlan.overall_suggestions)" :key="i" class="suggestion-item">
+                    <span class="suggestion-index">{{ i + 1 }}</span>
+                    <span class="suggestion-text">{{ item }}</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </section>
@@ -180,7 +185,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import type { TripPlan } from '@/types'
 import { editTripPlan } from '@/services/api'
 import AMapLoader from '@amap/amap-jsapi-loader'
@@ -399,18 +404,29 @@ const moveAttraction = (dayIndex: number, attractionIndex: number, direction: st
 }
 
 const deleteAttraction = (dayIndex: number, attractionIndex: number) => {
-  if (!confirm('确定要删除这个景点吗？')) return
-  tripPlan.value.days[dayIndex].attractions.splice(attractionIndex, 1)
-  nextTick(() => initMap())
+  Modal.confirm({
+    title: '删除景点',
+    content: '确定要删除这个景点吗？此操作不可撤销。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk() {
+      tripPlan.value.days[dayIndex].attractions.splice(attractionIndex, 1)
+      nextTick(() => initMap())
+    },
+  })
 }
 
 const addAttraction = (dayIndex: number) => {
+  // Use the last attraction's coords as default, or center of first day's attractions
+  const existing = tripPlan.value.days[dayIndex].attractions
+  const lastCoords = existing.length > 0 ? existing[existing.length - 1].location : null
   tripPlan.value.days[dayIndex].attractions.push({
     name: '新景点',
     address: '请输入地址',
     location: {
-      longitude: tripPlan.value.days[dayIndex].attractions[0]?.location.longitude || 104.0668,
-      latitude: tripPlan.value.days[dayIndex].attractions[0]?.location.latitude || 30.5728,
+      longitude: lastCoords?.longitude || 116.397,
+      latitude: lastCoords?.latitude || 39.909,
     },
     visit_duration: 60,
     description: '请输入景点描述',
@@ -425,6 +441,18 @@ const getFavoriteKey = () => `favorite_${tripPlan.value.city}_${tripPlan.value.s
 
 const checkFavorite = () => {
   isFavorite.value = localStorage.getItem(getFavoriteKey()) !== null
+}
+
+const parseSuggestions = (text: string): string[] => {
+  if (!text) return []
+  // Split by newlines, numbered patterns (1. / 1、/ 1）， or bullet points
+  const lines = text.split(/\n/)
+  const items: string[] = []
+  for (const line of lines) {
+    const cleaned = line.replace(/^\d+[\.\、\)）]\s*/, '').replace(/^[-•·]\s*/, '').trim()
+    if (cleaned) items.push(cleaned)
+  }
+  return items.length > 0 ? items : [text]
 }
 
 const toggleFavorite = () => {
@@ -818,12 +846,41 @@ onBeforeUnmount(() => {
   border-left: 3px solid var(--color-terracotta);
 }
 
-.overview-suggestion p {
-  font-size: 0.95rem;
-  line-height: 1.7;
-  color: var(--color-warm-gray);
-  font-style: italic;
+.suggestion-list {
+  list-style: none;
   margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+}
+
+.suggestion-index {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-terracotta);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-top: 2px;
+}
+
+.suggestion-text {
+  flex: 1;
 }
 
 /* Map */
