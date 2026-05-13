@@ -194,28 +194,21 @@ class TripPlannerAgent:
 
         self.attraction_agent = ToolAwareAgent(
             name="景点搜索专家",
-            system_prompt=ATTRACTION_AGENT_PROMPT.split("## 任务")[0].strip() + """
-你需要使用工具搜索景点信息，然后按格式整理输出。
-搜索完成后，用以下格式输出结果：
-- 【景点名】地址: xxx | 评分: x.x | 门票: xx元 | 游览时间: xx分钟 | 简介: xxx""",
+            system_prompt=ATTRACTION_AGENT_PROMPT,
             llm=self.llm,
             mcp_client=self.mcp_client
         )
 
         self.weather_agent = ToolAwareAgent(
             name="天气查询专家",
-            system_prompt=WEATHER_AGENT_PROMPT.split("## 任务")[0].strip() + """
-你需要使用工具查询天气数据，然后按日期整理输出。
-输出格式：MM-DD: 白天xx°C 天气 | 夜间xx°C | 风向xx 风力xx""",
+            system_prompt=WEATHER_AGENT_PROMPT,
             llm=self.llm,
             mcp_client=self.mcp_client
         )
 
         self.hotel_agent = ToolAwareAgent(
             name="酒店推荐专家",
-            system_prompt=HOTEL_AGENT_PROMPT.split("## 任务")[0].strip() + """
-你需要使用工具搜索酒店信息，然后按格式整理输出。
-输出格式：- 【酒店名】地址: xxx | 类型: xxx | 评分: x.x | 参考价: xxx元/晚""",
+            system_prompt=HOTEL_AGENT_PROMPT,
             llm=self.llm,
             mcp_client=self.mcp_client
         )
@@ -249,9 +242,9 @@ class TripPlannerAgent:
         query = f"请查询{city}的天气预报，返回未来几天的天气情况。"
         return self.weather_agent.run(query)
 
-    def search_hotels(self, city: str, accommodation: str) -> str:
-        logger.info(f"搜索{city}的{accommodation}...")
-        query = f"请搜索{city}的{accommodation}，返回酒店名称、地址、价格范围和评分等信息。"
+    def search_hotels(self, city: str, accommodation: str, budget: str = "中等") -> str:
+        logger.info(f"搜索{city}的{accommodation}（预算：{budget}）...")
+        query = f"请搜索{city}的{accommodation}，预算档位：{budget}，返回酒店名称、地址、价格范围、评分和亮点等信息。"
         return self.hotel_agent.run(query)
 
     def generate_plan(
@@ -331,7 +324,7 @@ class TripPlannerAgent:
             futures = {
                 executor.submit(self.search_attractions, request.city, request.preferences): "attractions",
                 executor.submit(self.query_weather, request.city): "weather",
-                executor.submit(self.search_hotels, request.city, request.accommodation): "hotels",
+                executor.submit(self.search_hotels, request.city, request.accommodation, request.budget): "hotels",
             }
             for future in as_completed(futures):
                 task_name = futures[future]

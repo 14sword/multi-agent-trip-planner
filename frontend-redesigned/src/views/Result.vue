@@ -300,15 +300,35 @@ const initMap = async () => {
           })
 
           if (allPositions.length > 1) {
-            const polyline = new AMap.Polyline({
-              path: allPositions,
-              strokeColor: '#C4654A',
-              strokeWeight: 3,
-              strokeOpacity: 0.7,
-              lineJoin: 'round',
-              lineCap: 'round',
-            })
-            map.add(polyline)
+            // Build bezier curves between consecutive points for natural arcs
+            for (let i = 0; i < allPositions.length - 1; i++) {
+              const [lng1, lat1] = allPositions[i]
+              const [lng2, lat2] = allPositions[i + 1]
+              const midLng = (lng1 + lng2) / 2
+              const midLat = (lat1 + lat2) / 2
+              const dist = Math.sqrt((lng2 - lng1) ** 2 + (lat2 - lat1) ** 2)
+              // Perpendicular offset scaled by distance — creates natural arc
+              const offset = dist * 0.15
+              const dx = lng2 - lng1
+              const dy = lat2 - lat1
+              const ctrlLng = midLng - (dy / dist) * offset
+              const ctrlLat = midLat + (dx / dist) * offset
+
+              const curve = new AMap.BezierCurve({
+                path: [
+                  [lng1, lat1],
+                  [ctrlLng, ctrlLat],
+                  [lng2, lat2],
+                ],
+                strokeColor: '#C4654A',
+                strokeWeight: 3,
+                strokeOpacity: 0.7,
+                lineJoin: 'round',
+                lineCap: 'round',
+                showDir: true,
+              })
+              map.add(curve)
+            }
           }
         } else {
           map = new AMap.Map(mapContainer, { zoom: 12, center: [116.397428, 39.90923], resizeEnable: true })

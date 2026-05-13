@@ -525,14 +525,33 @@ const initMap = async () => {
       })
 
       if (allPositions.length > 1) {
-        map.add(new AMap.Polyline({
-          path: allPositions,
-          strokeColor: '#1890ff',
-          strokeWeight: 4,
-          strokeOpacity: 0.8,
-          lineJoin: 'round',
-          lineCap: 'round',
-        }))
+        for (let i = 0; i < allPositions.length - 1; i++) {
+          const [lng1, lat1] = allPositions[i]
+          const [lng2, lat2] = allPositions[i + 1]
+          const midLng = (lng1 + lng2) / 2
+          const midLat = (lat1 + lat2) / 2
+          const dist = Math.sqrt((lng2 - lng1) ** 2 + (lat2 - lat1) ** 2)
+          const offset = dist * 0.15
+          const dx = lng2 - lng1
+          const dy = lat2 - lat1
+          const ctrlLng = midLng - (dy / dist) * offset
+          const ctrlLat = midLat + (dx / dist) * offset
+
+          const curve = new AMap.BezierCurve({
+            path: [
+              [lng1, lat1],
+              [ctrlLng, ctrlLat],
+              [lng2, lat2],
+            ],
+            strokeColor: '#1890ff',
+            strokeWeight: 4,
+            strokeOpacity: 0.8,
+            lineJoin: 'round',
+            lineCap: 'round',
+            showDir: true,
+          })
+          map.add(curve)
+        }
       }
     } catch {
       message.error('高德地图API加载失败，请检查网络连接')
