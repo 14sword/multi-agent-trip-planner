@@ -1,5 +1,5 @@
 import logging
-import requests
+import httpx
 from typing import Optional, List, Dict
 from app.config import settings
 
@@ -18,7 +18,7 @@ class UnsplashService:
                 "per_page": per_page,
                 "client_id": self.access_key
             }
-            response = requests.get(url, params=params, timeout=10)
+            response = httpx.get(url, params=params, timeout=10, trust_env=False)
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])

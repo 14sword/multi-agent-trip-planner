@@ -1,226 +1,290 @@
-# 🚀 Multi-Agent Trip Planner
+# 🚀 Voyager — AI 智能旅行助手
 
-### 基于Multi-Agent架构的AI智能旅行规划系统
+> *Voyager = 旅行者。输入目的地，AI Agent 团队帮你规划一切。*
 
-[![Stars](https://img.shields.io/github/stars/14sword/multi-agent-trip-planner?style=flat-square)](https://github.com/14sword/multi-agent-trip-planner)
-[![License](https://img.shields.io/github/license/14sword/multi-agent-trip-planner?style=flat-square)](https://github.com/14sword/multi-agent-trip-planner)
-[![Tech Stack](https://img.shields.io/badge/tech-vue3%20%7C%20fastapi%20%7C%20typescript%20%7C%20python-blue?style=flat-square)](https://github.com/14sword/multi-agent-trip-planner)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Vue 3](https://img.shields.io/badge/Vue-3.x-42b883?logo=vue.js&style=flat-square)](https://vuejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&style=flat-square)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&style=flat-square)](https://www.python.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&style=flat-square)](https://www.typescriptlang.org/)
 
 ---
 
-## 🎯 项目亮点
+## 📖 简介
 
-> "3分钟生成个性化旅行计划，让AI Agent帮你做攻略"
+做旅行攻略太累了 — 查景点、刷天气、比酒店、排路线... 信息碎片化严重，一份靠谱的行程往往需要 2-3 小时。
 
-### 核心价值
-- **AI智能推荐**：基于用户偏好，自动生成专属旅行方案
-- **多Agent协作**：景点、天气、酒店专家Agent并行工作，智能决策
-- **实时信息整合**：集成高德地图API，获取最新景点和天气数据
-- **用户体验优先**：简洁美观的界面，流畅的交互体验
+**Voyager** 是一个基于 **Multi-Agent 架构** 的 AI 旅行规划系统。你只需输入目的地、天数和偏好，背后 4 个 AI Agent 会像专业旅行顾问团队一样并行协作 — 搜索景点、查询天气、推荐住宿，最后由 Planner Agent 综合决策，一键生成包含每日行程、地图路线、预算估算的完整旅行计划。
 
-### 技术亮点
+**30 秒模板秒出 + LLM 深度规划**，覆盖全国所有城市。
+
+---
+
+## ✨ Demo
+
+| 首页输入 | 流式规划进度 | 结果页 + 地图 | 多方案对比 |
+|:---:|:---:|:---:|:---:|
+| ![Home](docs/images/demo-home.png) | ![Planning](docs/images/demo-planning.png) | ![Result](docs/images/demo-result.png) | ![Variants](docs/images/demo-variants.png) |
+
+- **首页** — 输入城市 / 天数 / 偏好，支持自定义标签（美食、文化、自然风光...）
+- **规划进度** — 3 个专家 Agent 实时并行搜索，SSE 流式反馈进度
+- **结果页** — 多日行程卡片 + 高德贝塞尔弧线地图 + 预算明细 + PDF/日历导出
+- **多方案对比** — 同时生成经济型 / 舒适型 / 豪华型 3 套方案，一键切换
+
+---
+
+## 🎯 核心亮点
 
 | 亮点 | 说明 |
 |------|------|
-| 🤖 **Multi-Agent架构** | 4个专业Agent并行协作，模拟真实旅行顾问团队 |
-| 🔗 **MCP协议应用** | 创新性地将Model Context Protocol应用于工具调用 |
-| 🧠 **Function Calling** | LLM结构化输出，保证行程数据格式稳定可靠 |
-| 🗺️ **贝塞尔弧线地图** | 高德地图API + BezierCurve 实现景点间弧线路径 |
-| 🎨 **设计系统** | 自定义 CSS 变量体系 + 微交互动画库 |
-| 📱 **响应式设计** | 适配移动端和桌面端，提供一致体验 |
-
----
-
-## 💡 技术难点与解决方案
-
-### 难点1：Multi-Agent协作稳定性
-**问题**：多个Agent并行调用外部API，如何保证数据一致性？
-**解决**：采用"专业Agent获取信息 → Planner Agent综合决策"的架构，通过结构化数据传递保证稳定性。
-
-### 难点2：LLM输出格式控制
-**问题**：LLM生成的行程数据格式不稳定，难以直接使用
-**解决**：采用Function Calling强制结构化输出 + 正则解析兜底，双保险确保JSON可用。
-
-### 难点3：用户体验与功能的平衡
-**问题**：功能复杂但要保持界面简洁
-**解决**：采用分步式交互，先获取核心信息，再逐步完善细节，降低用户决策负担。
-
----
-
-## 🛠️ 技术栈
-
-### 前端
-<div>
-<img src="https://img.shields.io/badge/Vue3-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue3">
-<img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
-<img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite">
-<img src="https://img.shields.io/badge/Ant%20Design%20Vue-1890FF?style=for-the-badge&logo=antdesign&logoColor=white" alt="Ant Design Vue">
-</div>
-
-### 后端
-<div>
-<img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
-<img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-<img src="https://img.shields.io/badge/LLM-MiMo--v2.5--pro%20%7C%20DeepSeek?style=for-the-badge&logo=xiaomi&logoColor=white" alt="LLM">
-<img src="https://img.shields.io/badge/MCP-FF6B6B?style=for-the-badge" alt="MCP Protocol">
-</div>
-
-### 基础设施
-<div>
-<img src="https://img.shields.io/badge/Amap-1E90FF?style=for-the-badge&logo=amap&logoColor=white" alt="高德地图">
-<img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js">
-</div>
-
----
-
-## 📋 核心功能
-
-- [x] **AI行程规划**：输入目的地和偏好，生成完整旅行方案
-- [x] **多Agent协作**：景点/天气/酒店专家Agent并行工作，智能决策
-- [x] **Function Calling**：LLM结构化输出，JSON格式稳定可靠
-- [x] **贝塞尔弧线地图**：景点间弧线路径 + 方向箭头，告别直线连接
-- [x] **深度旅行内容**：景点100-150字介绍 + 餐饮推荐 + 实用Tips
-- [x] **天气智能适配**：雨天安排室内景点，高温避开正午暴晒
-- [x] **行程编辑调整**：灵活修改行程安排
-- [x] **预算自动计算**：智能费用估算
-- [x] **PDF导出**：一键导出旅行计划
-- [x] **本地收藏**：保存喜欢的行程
-- [x] **14项单元测试**：核心逻辑测试覆盖
+| 🤖 **Multi-Agent 协作** | 景点 / 天气 / 酒店 3 个 Agent 并行获取数据，Planner Agent 统一决策 |
+| ⚡ **双模式规划** | 热门城市模板秒出 + LLM Function Calling 实时深度规划 |
+| 🗺️ **贝塞尔弧线地图** | 高德地图 + BezierCurve，景点间弧线路径 + 方向箭头，告别生硬直线 |
+| 🌧️ **天气智能适配** | 雨天自动替换室内景点，高温时段避开正午暴晒 |
+| 💰 **商业化闭环** | CPS 联盟链接（携程/去哪儿/飞猪） + 分享 Token + ICS 日历导出 |
+| 🐳 **一键部署** | Docker Compose 一行命令启动，nginx SPA 路由 + API 反向代理 |
 
 ---
 
 ## 🏗️ 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      用户界面层 (Vue3)                       │
-│              Home.vue (输入) → Result.vue (展示)             │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      API层 (FastAPI)                         │
-│                  POST /api/trip/plan                        │
-│                  POST /api/trip/edit                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Agent协作层                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  Attraction  │  │   Weather    │  │    Hotel     │      │
-│  │    Agent     │  │    Agent     │  │    Agent     │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-│          │                │                │                 │
-│          └────────────────┼────────────────┘                 │
-│                           ▼                                  │
-│                  ┌──────────────┐                           │
-│                  │   Planner    │                           │
-│                  │    Agent     │                           │
-│                  └──────────────┘                           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      工具层 (MCP)                            │
-│         高德地图POI │ 天气API │ 图片服务 │ LLM服务            │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    用户界面 (Vue 3 + Vite)                  │
+│          Home → Result → Comparison → Share → Favorites    │
+└───────────────────────┬──────────────────────────────────┘
+                        │ HTTP / REST
+                        ▼
+┌──────────────────────────────────────────────────────────┐
+│                    API 层 (FastAPI)                        │
+│   POST /plan  │  POST /edit  │ POST /plan/variants       │
+│   GET /list   │  POST /favorite  │ GET /share/{token}    │
+└───────────────────────┬──────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────────────┐
+│              Agent 协作层 (Multi-Agent)                     │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐         │
+│  │ Attraction │  │  Weather   │  │   Hotel    │  ← 并行  │
+│  │   Agent    │  │   Agent    │  │   Agent    │         │
+│  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘         │
+│        └────────────────┼────────────────┘                │
+│                         ▼                                │
+│                ┌──────────────┐                          │
+│                │   Planner    │  ← Function Calling       │
+│                │    Agent     │                          │
+│                └──────────────┘                          │
+└───────────────────────┬──────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────────────┐
+│                  工具层 (MCP + API)                        │
+│  高德 POI  │  高德天气  │  Unsplash  │  MiMo LLM          │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 快速启动
+## 🚀 快速开始
 
 ### 环境要求
 - Node.js >= 18
 - Python >= 3.12
-- 高德地图 API Key
-- OpenAI API Key (或其他LLM服务)
+- 高德地图 API Key（可选，无则使用 LLM 离线模式）
+- OpenAI-compatible API Key（支持小米 MiMo / DeepSeek / OpenAI 等）
 
-### 安装运行
+### 一键启动
 
 ```bash
-# 克隆项目
-git clone https://github.com/14sword/multi-agent-trip-planner.git
-cd multi-agent-trip-planner
+git clone https://github.com/14sword/voyager.git
+cd voyager
 
-# 一键启动（推荐）
+# 配置环境变量
+cd backend && cp .env.example .env
+# 编辑 .env 填入 API Key
+
+# 启动
 chmod +x start.sh && ./start.sh
-
-# 或手动启动
-# 1. 后端
-cd backend && pip install -r requirements.txt
-cp .env.example .env  # 配置API密钥
-uvicorn app.main:app --reload --port 8000
-
-# 2. 前端
-cd frontend-redesigned && npm install
-npm run dev
 ```
 
-访问 http://localhost:5173 即可使用。
+### Docker 部署
+
+```bash
+docker compose up -d
+```
+
+访问 **http://localhost:5173** 即可使用。
 
 ---
 
-## 📖 Agent系统设计
+## 📋 功能全览
 
-### 核心思想
+### 规划引擎
+| 功能 | 说明 |
+|------|------|
+| 智能行程生成 | 输入城市 + 天数 + 偏好，LLM Function Calling 生成结构化行程 |
+| 模板秒出 | 北京 / 上海 / 成都预置精品模板，输入即出 |
+| 多方案对比 | 同时生成经济 / 舒适 / 豪华 3 套方案 |
+| 行程编辑 | 灵活调整行程顺序和内容 |
+| 预算自动计算 | 按交通 / 住宿 / 餐饮 / 门票自动汇总 |
 
-传统的旅行规划需要用户自己搜索景点、查天气、找酒店，信息碎片化严重。本项目通过Multi-Agent架构，让AI Agent模拟真实旅行顾问团队的工作方式：
+### 地图与交互
+| 功能 | 说明 |
+|------|------|
+| 贝塞尔弧线路径 | 景点间弧形连接线 + 方向箭头 |
+| 天气智能适配 | 雨天室内景点 / 高温避开正午 / 低温调整户外活动 |
+| 景点深度内容 | 100-150 字介绍 + 历史背景 + 拍照打卡点 + 实用 Tips |
+| 流式进度反馈 | SSE 实时推送 Agent 搜索进度 |
 
-> **用户输入偏好 → Agent团队并行工作 → Planner综合决策 → 输出完整行程**
+### 商业化
+| 功能 | 说明 |
+|------|------|
+| CPS 联盟链接 | 携程 / 去哪儿 / 飞猪 / 机票比价链接 |
+| 分享 H5 页面 | 生成 Token，一键分享给朋友 |
+| 收藏管理 | 后端持久化收藏列表 |
+| ICS 日历导出 | 行程同步到手机日历 |
+| PDF 导出 | CDN 动态加载 html2pdf.js，一键导出 |
 
-### 四个专业Agent
-
-| Agent | 职责 | 调用工具 |
-|-------|------|---------|
-| **Attraction Agent** | 搜索目的地景点 | 高德POI搜索 |
-| **Weather Agent** | 查询天气预报 | 高德天气API |
-| **Hotel Agent** | 推荐合适住宿 | 高德POI搜索 |
-| **Planner Agent** | 综合信息生成行程 | 无（仅做决策） |
-
-### 为什么这样设计？
-
-1. **并行提效**：三个专业Agent同时工作，减少等待时间
-2. **专业专注**：每个Agent只做一个领域，信息更精准
-3. **智能决策**：Planner Agent综合所有信息，做出合理规划
-4. **易于扩展**：新增需求只需添加新的Agent
-
----
-
-## 🎓 学习心得
-
-作为一个正在学习AI产品经理的大三学生，这个项目让我深刻理解了：
-
-### 技术层面
-- **Agent架构**：理解了Multi-Agent协作的实际应用场景
-- **Prompt工程**：学会了如何设计有效的提示词
-- **系统设计**：前后端分离、API设计、错误处理
-
-### 产品层面
-- **用户需求**：旅行规划的核心痛点是"做攻略太麻烦"
-- **MVP思维**：先做核心功能，再逐步完善
-- **用户体验**：技术强大不够，还要用起来顺手
-
-### 未来规划
-- [ ] 添加用户认证系统
-- [ ] 实现数据库持久化存储
-- [ ] 添加云端分享功能
-- [ ] 扩展更多工具集成（机票预订等）
-- [ ] 实现Agent反思和自检能力
+### 工程化
+| 功能 | 说明 |
+|------|------|
+| SQLite 持久化 | 纯 Python sqlite3，零外部依赖 |
+| 用户认证 | JWT 注册 / 登录 |
+| 多阶段 Docker | backend + frontend build + nginx |
+| CORS 安全 | 精确控制跨域访问 |
 
 ---
 
-## 📝 License
+## 🧠 Agent 系统设计
 
-MIT License - 欢迎star和fork！
+### 工作流程
+
+```
+用户输入 (城市 / 天数 / 偏好)
+    │
+    ▼
+┌─────────────────────────────┐
+│  并行调用 3 个专业 Agent      │
+│  ├─ AttractionAgent → 景点  │
+│  ├─ WeatherAgent → 天气     │
+│  └─ HotelAgent → 酒店       │
+└─────────────┬───────────────┘
+              │ 汇总数据
+              ▼
+┌─────────────────────────────┐
+│  PlannerAgent               │
+│  ├─ 综合景点 / 天气 / 酒店   │
+│  ├─ 按地理位置优化路线       │
+│  ├─ 天气适配调整             │
+│  └─ Function Calling 输出    │
+│     结构化 JSON              │
+└─────────────────────────────┘
+```
+
+### Agent 职责
+
+| Agent | 职责 | 数据源 | 容错 |
+|-------|------|--------|------|
+| **Attraction Agent** | 搜索目的地热门景点 | 高德 POI + LLM 知识 | MCP 不可用时用 LLM 自身知识 |
+| **Weather Agent** | 查询行程期间天气 | 高德天气 API | 同上 |
+| **Hotel Agent** | 推荐酒店住宿 | 高德 POI 搜索 | 同上 |
+| **Planner Agent** | 综合决策生成行程 | 无（纯推理） | JSON 解析失败时宽松构建 |
+
+### 关键实现
+
+- **Function Calling** — LLM 通过预定义 JSON Schema 输出结构化行程
+- **MCP 协议** — Agent 通过 Model Context Protocol 调用高德地图 API
+- **JSON 修复** — 多层解析（直接解析 → 正则提取 → 尾部逗号修复 → 逐对象提取）
+- **安全截断** — 返回超量天数自动截断
 
 ---
 
-<div align="center">
+## 🛠️ 技术栈
 
-**如果你觉得这个项目有帮助，欢迎给我一个 ⭐**
+### 前端
+- **Vue 3** + TypeScript + Vite 5
+- **Ant Design Vue 4** — 组件库
+- **高德地图 JS API 2.0** — 地图 + 贝塞尔弧线
+- **CDN 动态加载** — html2pdf.js 等
 
-Made with ❤️ by [14sword](https://github.com/14sword)
+### 后端
+- **FastAPI** + Python 3.12
+- **SQLite** — 纯 Python sqlite3，零外部依赖
+- **OpenAI-compatible API** — 接入 MiMo v2.5-pro 推理模型
+- **MCP** — 标准化 Agent 工具调用
+- **高德地图 REST API** — POI + 天气
 
-</div>
+### 基础设施
+- **Docker** — 多阶段构建
+- **nginx** — SPA 路由 + API 反向代理 + gzip
+
+---
+
+## 📂 项目结构
+
+```
+voyager/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI 入口
+│   │   ├── config.py            # 环境变量配置
+│   │   ├── database.py          # SQLite ORM（零依赖）
+│   │   ├── api/routes.py        # API 路由（CRUD + 分享 + 收藏 + CPS）
+│   │   ├── agents/
+│   │   │   ├── trip_planner.py  # Multi-Agent 编排 + Function Calling
+│   │   │   └── prompts.py       # Agent 系统提示词
+│   │   ├── models/schemas.py    # Pydantic 数据模型
+│   │   ├── services/
+│   │   │   ├── llm.py           # LLM 服务（OpenAI 兼容）
+│   │   │   ├── mcp_client.py    # MCP 客户端（高德地图）
+│   │   │   └── unsplash.py      # 图片服务
+│   │   └── templates.py         # 城市模板（北京/上海/成都）
+│   ├── tests/test_routes.py     # 20 项 API 测试
+│   └── requirements.txt
+├── frontend-redesigned/
+│   ├── src/
+│   │   ├── views/
+│   │   │   ├── Home.vue         # 首页（表单输入）
+│   │   │   ├── Result.vue       # 结果页（行程 + 地图 + 导出）
+│   │   │   ├── ComparisonView.vue # 多方案对比
+│   │   │   ├── Favorites.vue    # 收藏列表
+│   │   │   ├── Share.vue        # 分享 H5 页面
+│   │   │   └── Auth.vue         # 登录/注册
+│   │   ├── services/api.ts      # API 接口封装
+│   │   ├── router/index.ts      # 路由配置
+│   │   └── types/index.ts       # TypeScript 类型
+│   └── package.json
+├── Dockerfile                    # 多阶段构建
+├── docker-compose.yml
+├── nginx.conf                    # SPA + 反向代理
+└── start.sh                      # 一键启动脚本
+```
+
+---
+
+## 🔌 API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/trip/plan` | 生成旅行计划 |
+| `POST` | `/api/trip/edit` | 编辑旅行计划 |
+| `POST` | `/api/trip/plan/variants` | 多方案对比 |
+| `GET` | `/api/trip/list` | 行程列表 |
+| `GET` | `/api/trip/{trip_id}` | 行程详情 |
+| `DELETE` | `/api/trip/{trip_id}` | 删除行程 |
+| `GET` | `/api/trip/share/{token}` | 分享链接访问 |
+| `POST` | `/api/trip/favorite/{trip_id}` | 添加收藏 |
+| `DELETE` | `/api/trip/favorite/{trip_id}` | 取消收藏 |
+| `GET` | `/api/trip/favorites/list` | 收藏列表 |
+| `POST` | `/api/auth/register` | 用户注册 |
+| `POST` | `/api/auth/login` | 用户登录 |
+
+---
+
+## 📜 License
+
+MIT License © [14sword](https://github.com/14sword)
+
+---
+
+⭐ **如果这个项目对你有帮助，欢迎 Star！**

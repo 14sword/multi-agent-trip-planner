@@ -18,6 +18,23 @@
 
     <transition name="expand">
       <div v-if="expanded" class="day-card-body">
+        <!-- Day 1 Arrival Info -->
+        <div v-if="dayIndex === 0 && transportInfo && transportInfo.departure_city" class="arrival-banner">
+          <span class="arrival-icon">{{ transportInfo.recommended_mode?.includes('飞机') ? '✈️' : '🚄' }}</span>
+          <div class="arrival-info">
+            <span class="arrival-route">{{ transportInfo.departure_city }} → {{ transportInfo.destination_city }}</span>
+            <span class="arrival-detail">{{ transportInfo.recommended_mode }} · {{ transportInfo.estimated_duration }} · 约¥{{ transportInfo.estimated_cost }}</span>
+          </div>
+        </div>
+
+        <!-- Inter-day Connection -->
+        <div v-if="dayIndex > 0 && prevHotel" class="interday-banner">
+          <span class="interday-icon">🔄</span>
+          <div class="interday-info">
+            <span class="interday-text">从 {{ prevHotel.name || '酒店' }} 出发</span>
+          </div>
+        </div>
+
         <!-- Attractions -->
         <div class="day-section" v-if="day.attractions.length">
           <h4 class="day-section-title">
@@ -32,6 +49,7 @@
               <div class="attraction-content">
                 <div class="attraction-info">
                   <div class="attraction-header">
+                    <span class="attraction-number">{{ index + 1 }}</span>
                     <h5 v-if="!editMode" class="attraction-name">{{ attraction.name }}</h5>
                     <input v-else v-model="attraction.name" class="edit-input edit-input--name" placeholder="景点名称" />
                     <button
@@ -39,7 +57,7 @@
                       class="expand-toggle"
                       @click.stop="$emit('toggle-detail', index)"
                     >
-                      {{ expandedDetails[index] ? '收起' : '详情' }}
+                      {{ expandedDetails[`${dayIndex}-${index}`] ? '收起' : '详情' }}
                     </button>
                   </div>
                   <p class="attraction-address">📍 {{ attraction.address }}</p>
@@ -53,13 +71,13 @@
                   <div v-if="editMode" class="edit-fields">
                     <input v-model="attraction.address" class="edit-input" placeholder="地址" />
                     <input v-model.number="attraction.visit_duration" type="number" class="edit-input" placeholder="游览时间(分钟)" />
-                    <input v-model="attraction.ticket_price" class="edit-input" placeholder="门票价格" />
-                    <input v-model="attraction.rating" class="edit-input" placeholder="评分" />
+                    <input v-model.number="attraction.ticket_price" type="number" class="edit-input" placeholder="门票价格" />
+                    <input v-model.number="attraction.rating" type="number" step="0.1" class="edit-input" placeholder="评分" />
                   </div>
 
                   <!-- Expanded details -->
                   <transition name="expand">
-                    <div v-if="expandedDetails[index] && !editMode" class="attraction-details">
+                    <div v-if="expandedDetails[`${dayIndex}-${index}`] && !editMode" class="attraction-details">
                       <p v-if="attraction.description">{{ attraction.description }}</p>
                       <p v-if="attraction.opening_hours">🕐 {{ attraction.opening_hours }}</p>
                       <p v-if="attraction.transportation">🚗 {{ attraction.transportation }}</p>
@@ -119,14 +137,17 @@
 </template>
 
 <script setup lang="ts">
-import type { DayPlan } from '@/types'
+import type { DayPlan, TransportInfo } from '@/types'
 
 const props = defineProps<{
   day: DayPlan
   dayNumber: number
+  dayIndex: number
   expanded: boolean
   editMode: boolean
-  expandedDetails: Record<number, boolean>
+  expandedDetails: Record<string, boolean>
+  transportInfo?: TransportInfo
+  prevHotel?: { name?: string; address?: string } | null
 }>()
 
 defineEmits<{
@@ -152,6 +173,7 @@ const getWeekday = (dateStr: string) => {
 const getMealEmoji = (type: string) => {
   return { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' }[type] || '🍽️'
 }
+
 </script>
 
 <style scoped>
@@ -591,5 +613,84 @@ const getMealEmoji = (type: string) => {
     width: 100%;
     height: 160px;
   }
+}
+
+/* Arrival Banner */
+.arrival-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 0 16px 12px;
+  background: linear-gradient(135deg, #eff6ff, #f0f9ff);
+  border-radius: 10px;
+  border: 1px solid #bfdbfe;
+}
+
+.arrival-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.arrival-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.arrival-route {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.arrival-detail {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Inter-day Banner */
+.interday-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  margin: 0 16px 12px;
+  background: linear-gradient(135deg, #f1f5f9, #f8fafc);
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.interday-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.interday-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.interday-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+}
+
+/* Numbered attraction marker */
+.attraction-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-accent, #C4654A);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  font-family: var(--font-body);
 }
 </style>

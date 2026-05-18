@@ -6,16 +6,13 @@ export interface Location {
 export interface Attraction {
   name: string
   address: string
-  location: Location
+  location?: Location
   visit_duration: number
   description: string
   category?: string
   rating?: number
   image_url?: string
   ticket_price?: number
-  opening_hours?: string
-  transportation?: string
-  notes?: string
 }
 
 export interface Meal {
@@ -38,6 +35,17 @@ export interface Hotel {
   estimated_cost: number
 }
 
+export interface TransportInfo {
+  departure_city: string
+  destination_city: string
+  recommended_mode: string
+  estimated_cost: number
+  estimated_duration: string
+  notes: string
+  arrival_longitude?: number
+  arrival_latitude?: number
+}
+
 export interface Budget {
   total_attractions: number
   total_hotels: number
@@ -50,8 +58,8 @@ export interface DayPlan {
   date: string
   day_index: number
   description: string
-  transportation: string
-  accommodation: string
+  transportation?: string
+  accommodation?: string
   hotel?: Hotel
   attractions: Attraction[]
   meals: Meal[]
@@ -67,22 +75,35 @@ export interface WeatherInfo {
   wind_power: string
 }
 
+export interface CpsLink {
+  name: string
+  url: string
+}
+
 export interface TripPlan {
+  id?: string
   city: string
+  departure_city?: string
   start_date: string
   end_date: string
   days: DayPlan[]
   weather_info: WeatherInfo[]
   overall_suggestions: string
   budget?: Budget
+  transport_info?: TransportInfo
+  share_token?: string
+  cps_links?: Record<string, CpsLink>
 }
 
 export interface TripPlanRequest {
   city: string
+  departure_city: string
   start_date: string
   end_date: string
   days: number
-  preferences: string
+  travelers: number
+  preferences: string[]
+  extra_info?: string
   budget: string
   transportation: string
   accommodation: string

@@ -14,7 +14,11 @@ class RemoteMCPClient:
         self.api_key = api_key
         self.session_id = None
         self.tools = {}
-        self._initialize()
+        self.ready = False
+        # 后台线程初始化，不阻塞启动
+        import threading
+        t = threading.Thread(target=self._initialize, daemon=True)
+        t.start()
 
     def _initialize(self):
         logger.info(f"初始化远程MCP服务器: {self.server_url}")
@@ -22,9 +26,10 @@ class RemoteMCPClient:
             self._handshake()
             self._notify_initialized()
             self._discover_tools()
+            self.ready = True
             logger.info(f"MCP工具初始化成功，发现 {len(self.tools)} 个工具")
         except Exception as e:
-            logger.error(f"MCP工具初始化失败: {e}")
+            logger.error(f"MCP工具初始化失败: {e}（将使用LLM离线模式）")
 
     def _headers(self) -> dict:
         h = {
@@ -46,18 +51,22 @@ class RemoteMCPClient:
                 "params": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "trip-planner", "version": "1.0"},
+                    "clientInfo": {"name": "voyager", "version": "2.0.0"},
                 }
             },
             headers=self._headers(),
-            timeout=30.0,
+            timeout=10.0,
+            trust_env=False,
         )
         response.raise_for_status()
         data = response.json()
         if "error" in data:
             raise RuntimeError(data["error"].get("message", "握手失败"))
         self.session_id = response.headers.get("Mcp-Session-Id")
-        logger.debug(f"握手成功，Session ID: {self.session_id[:16]}...")
+        if self.session_id:
+            logger.debug(f"握手成功，Session ID: {self.session_id[:16]}...")
+        else:
+            logger.warning("握手成功但未返回 Session ID")
 
     def _notify_initialized(self):
         httpx.post(
@@ -65,6 +74,7 @@ class RemoteMCPClient:
             json={"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
             headers=self._headers(),
             timeout=10.0,
+            trust_env=False,
         )
 
     def _discover_tools(self):
@@ -79,6 +89,7 @@ class RemoteMCPClient:
                 json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
                 headers=self._headers(),
                 timeout=30.0,
+                trust_env=False,
             )
             response.raise_for_status()
 
@@ -108,7 +119,8 @@ class RemoteMCPClient:
                         "params": {"name": tool_name, "arguments": arguments}
                     },
                     headers=self._headers(),
-                    timeout=60.0,
+                    timeout=15.0,
+                    trust_env=False,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -124,15 +136,17 @@ class RemoteMCPClient:
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in (401, 403):
                     logger.warning("MCP会话过期，重新握手...")
+                    self.session_id = None
                     try:
+                        time.sleep(1)
                         self._handshake()
                         self._notify_initialized()
                         continue
-                    except Exception:
-                        pass
+                    except Exception as ex:
+                        logger.warning(f"MCP重新握手失败: {ex}")
                 logger.warning(f"MCP HTTP错误 (尝试 {attempt + 1}/3): {e}")
                 if attempt < 2:
-                    time.sleep(1)
+                    time.sleep(2)
             except Exception as e:
                 logger.warning(f"MCP工具调用异常 (尝试 {attempt + 1}/3): {e}")
                 if attempt < 2:
@@ -166,13 +180,18 @@ class MCPClient:
             self.amap_tool = None
 
     def search_poi(self, keywords: str, city: str, types: str = "") -> str:
-        if not self.amap_tool:
-            return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("maps_text_search", {
+        if not self.amap_tool or not self.amap_tool.ready:
+            return ""
+        result = self.amap_tool.call_tool("maps_text_search", {
             "keywords": keywords,
             "city": city,
             "citylimit": "false"
         })
+        # 检查 MCP 返回错误
+        if result and ("failed" in result or "error" in result.lower() or "错误" in result):
+            logger.warning(f"MCP search_poi 失败: {result[:100]}")
+            return ""
+        return result
 
     def get_weather(self, city: str) -> str:
         if not self.amap_tool:
@@ -185,7 +204,7 @@ class MCPClient:
     def get_distance(self, origin: str, destination: str) -> str:
         if not self.amap_tool:
             return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("maps_distance", {
+        return self.amap_tool.call_tool("amap_maps_distance", {
             "origins": origin,
             "destination": destination,
             "type": "1"
@@ -194,7 +213,30 @@ class MCPClient:
     def get_route_driving(self, origin: str, destination: str) -> str:
         if not self.amap_tool:
             return "错误：高德地图工具未初始化"
-        return self.amap_tool.call_tool("maps_direction_driving_by_coordinates", {
+        return self.amap_tool.call_tool("amap_maps_direction_driving_by_coordinates", {
             "origin": origin,
             "destination": destination
         })
+
+    def geocode(self, address: str, city: str = "") -> Optional[Dict[str, float]]:
+        """地理编码：将地址转换为经纬度坐标。返回 {longitude, latitude} 或 None。"""
+        amap_key = getattr(settings, 'AMAP_API_KEY', '')
+        if not amap_key:
+            return None
+        try:
+            params = {"key": amap_key, "address": address}
+            if city:
+                params["city"] = city
+            resp = httpx.get(
+                "https://restapi.amap.com/v3/geocode/geo",
+                params=params, timeout=5.0, trust_env=False,
+            )
+            data = resp.json()
+            if data.get("status") == "1" and data.get("geocodes"):
+                loc_str = data["geocodes"][0].get("location", "")
+                if loc_str and "," in loc_str:
+                    lng, lat = loc_str.split(",", 1)
+                    return {"longitude": float(lng), "latitude": float(lat)}
+        except Exception as e:
+            logger.warning(f"地理编码失败 [{address}]: {e}")
+        return None

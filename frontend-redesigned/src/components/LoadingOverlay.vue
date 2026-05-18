@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = defineProps<{
   visible: boolean
@@ -48,21 +48,23 @@ const props = defineProps<{
 }>()
 
 const agents = ref([
+  { id: 'transport', name: '交通规划', icon: '🚄', status: '等待中...', done: false },
   { id: 'attraction', name: '景点专家', icon: '🔍', status: '等待中...', done: false },
   { id: 'weather', name: '天气专家', icon: '🌤️', status: '等待中...', done: false },
   { id: 'hotel', name: '住宿专家', icon: '🏨', status: '等待中...', done: false },
   { id: 'planner', name: '规划专家', icon: '📋', status: '等待中...', done: false },
+  { id: 'organizer', name: '整理专家', icon: '📝', status: '等待中...', done: false },
 ])
 
 const statusText = ref('准备中...')
 
 const statusMessages = [
-  '正在分析您的偏好...',
+  '正在分析交通路线...',
   '景点专家正在搜索最佳去处...',
   '天气专家正在查询预报...',
-  '住宿专家正在筛选酒店...',
-  '规划专家正在整合信息...',
-  '正在生成专属行程...',
+  '住宿专家正在推荐酒店...',
+  '规划专家正在设计三个方案...',
+  '整理专家正在汇总行程...',
 ]
 
 watch(

@@ -51,6 +51,11 @@ htmlcov/
 dist/
 build/
 
+# Database
+*.db
+*.db-shm
+*.db-wal
+
 # Uvicorn
 *.pid
 

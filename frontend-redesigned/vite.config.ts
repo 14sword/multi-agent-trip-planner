@@ -20,8 +20,19 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'amap': ['@amap/amap-jsapi-loader'],
+          'vendor': ['vue', 'vue-router', 'axios', 'dayjs'],
+        },
+      },
+    },
+  },
   server: {
-    port: 5174,
+    port: 5173,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

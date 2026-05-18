@@ -1,10 +1,10 @@
-# 智能旅行助手启动指南
+# Voyager 启动指南
 
 ## 环境要求
 - Node.js >= 18
 - Python >= 3.12
 - 高德地图 API Key
-- OpenAI API Key (或其他LLM服务)
+- OpenAI-compatible API Key（小米MiMo / DeepSeek 等）
 
 ## 后端启动
 
@@ -20,10 +20,10 @@ pip install -r requirements.txt
 # 高德地图API Key (必须)
 AMAP_API_KEY=你的高德地图API密钥
 
-# LLM服务配置
-LLM_API_KEY=你的OpenAI API密钥
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL_ID=gpt-4o-mini
+# LLM服务配置 (Xiaomi MiMo)
+LLM_API_KEY=你的MiMo API密钥
+LLM_BASE_URL=https://api.xiaomimimo.com/v1
+LLM_MODEL_ID=mimo-v2.5-pro
 
 # 服务器配置 (可选)
 HOST=0.0.0.0
@@ -44,7 +44,7 @@ python3 -m uvicorn app.main:app --reload --port 8000
 
 ### 1. 安装依赖
 ```bash
-cd frontend
+cd frontend-redesigned
 npm install
 ```
 
@@ -58,7 +58,7 @@ npm run dev
 ```
 
 ## 访问地址
-- 前端：http://localhost:5173 (如果端口被占用，会自动使用其他端口，如5174)
+- 前端：http://localhost:5173（如果端口被占用，会自动使用其他端口，如5174）
 - 后端API文档：http://localhost:8000/docs
 
 ## 一键启动脚本
@@ -123,19 +123,22 @@ npm install
 
 ## 项目结构
 ```
-multi-agent-trip-planner/
-├── backend/          # 后端代码 (FastAPI + Python)
-├── frontend/         # 前端代码 (Vue3 + TypeScript)
-├── .gitignore        # Git忽略文件
-├── LICENSE           # 开源许可证
-├── PRODUCT.md        # 产品文档
-├── README.md         # 项目说明
-└── start.sh          # 一键启动脚本
+voyager/
+├── backend/               # 后端代码（FastAPI + Python）
+├── frontend-redesigned/   # 前端代码（Vue3 + TypeScript）
+├── Dockerfile             # 多阶段构建
+├── docker-compose.yml     # Docker 编排
+├── nginx.conf             # nginx 配置
+├── .gitignore             # Git 忽略文件
+├── LICENSE                # 开源许可证
+├── PRODUCT.md             # 产品文档
+├── README.md              # 项目说明
+└── start.sh               # 一键启动脚本
 ```
 
 ## 技术栈
-- 前端：Vue3, TypeScript, Vite, Ant Design Vue
-- 后端：FastAPI, Python, LLM, MCP Protocol
-- 基础设施：高德地图, Node.js
+- 前端：Vue3, TypeScript, Vite 5, Ant Design Vue 4
+- 后端：FastAPI, Python 3.12, LLM, MCP Protocol
+- 基础设施：高德地图, Unsplash, Docker
 
-启动成功后，你就可以在浏览器中访问智能旅行助手，开始使用AI生成个性化的旅行计划了！
+启动成功后，你就可以在浏览器中访问 Voyager，开始使用 AI 生成个性化的旅行计划了！

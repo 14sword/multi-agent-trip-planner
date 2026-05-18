@@ -54,8 +54,25 @@
         </div>
 
         <form class="planner-form" @submit.prevent="handleSubmit">
-          <!-- Row 1: City + Days -->
-          <div class="form-row form-row--hero">
+          <!-- Row 1: Departure + City + Days -->
+          <div class="form-row form-row--triple">
+            <div class="form-group">
+              <label class="form-label">
+                出发城市
+                <a-tooltip title="填写后系统将规划最佳交通路线并估算交通费用">
+                  <span class="label-hint">?</span>
+                </a-tooltip>
+              </label>
+              <a-auto-complete
+                v-model:value="formData.departure_city"
+                :options="departureOptions"
+                placeholder="你从哪出发？"
+                size="large"
+                style="width: 100%"
+                :filter-option="filterDeparture"
+              />
+              <span v-if="formData.departure_city && formData.departure_city === formData.city" class="field-hint">本地出发，无需城际交通</span>
+            </div>
             <div class="form-group form-group--city">
               <label class="form-label">目的地</label>
               <div class="input-wrapper input-wrapper--large">
@@ -69,18 +86,12 @@
                 />
               </div>
             </div>
-            <div class="form-group form-group--days">
+            <div class="form-group">
               <label class="form-label">旅行天数</label>
-              <div class="days-selector">
-                <button
-                  v-for="d in 7"
-                  :key="d"
-                  type="button"
-                  :class="['day-chip', { active: formData.days === d }]"
-                  @click="formData.days = d"
-                >
-                  {{ d }}
-                </button>
+              <div class="days-display">
+                <span class="days-number">{{ formData.days }}</span>
+                <span class="days-unit">天</span>
+                <span v-if="startDate && endDate" class="days-hint">自动计算</span>
               </div>
             </div>
           </div>
@@ -95,6 +106,7 @@
                 size="large"
                 format="YYYY-MM-DD"
                 placeholder="选择出发日"
+                :disabled-date="disabledPastDate"
                 @change="onStartDateChange"
               />
             </div>
@@ -106,7 +118,23 @@
                 size="large"
                 format="YYYY-MM-DD"
                 placeholder="选择返程日"
+                :disabled-date="disabledPastDate"
                 @change="onEndDateChange"
+              />
+            </div>
+          </div>
+
+          <!-- Row 2.5: Travelers -->
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">出行人数</label>
+              <a-input-number
+                v-model:value="formData.travelers"
+                :min="1"
+                :max="20"
+                size="large"
+                style="width: 100%"
+                placeholder="几人出行"
               />
             </div>
           </div>
@@ -114,19 +142,33 @@
           <!-- Row 3: Preferences -->
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">旅行偏好</label>
+              <label class="form-label">旅行偏好 <span class="label-hint">可多选</span></label>
               <div class="option-grid">
                 <button
-                  v-for="pref in preferences"
+                  v-for="pref in preferenceOptions"
                   :key="pref.value"
                   type="button"
-                  :class="['option-chip', { active: formData.preferences === pref.value }]"
-                  @click="formData.preferences = pref.value"
+                  :class="['option-chip', { active: formData.preferences.includes(pref.value) }]"
+                  @click="togglePreference(pref.value)"
                 >
                   <span class="option-emoji">{{ pref.emoji }}</span>
                   <span class="option-text">{{ pref.label }}</span>
                 </button>
               </div>
+            </div>
+          </div>
+
+          <!-- Row 3.5: Extra Info -->
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">补充说明 <span class="label-hint">选填</span></label>
+              <a-input
+                v-model:value="formData.extra_info"
+                size="large"
+                placeholder="例如：带6岁小孩、膝盖不好少走路、对佛教文化感兴趣"
+                :maxlength="200"
+                allowClear
+              />
             </div>
           </div>
 
@@ -241,16 +283,16 @@
 
     <!-- Footer -->
     <footer class="site-footer">
-      <p>旅途 · Wanderlust — AI 多智能体旅行规划</p>
+      <p>Voyager — AI 多智能体旅行规划</p>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { generateTripPlan, ApiError } from '@/services/api'
+import { generateVariants, ApiError } from '@/services/api'
 import type { TripPlanRequest } from '@/types'
 import dayjs, { type Dayjs } from 'dayjs'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
@@ -263,28 +305,33 @@ const loadingStatus = ref('')
 const currentStep = ref(-1)
 
 let abortController: AbortController | null = null
-let progressTimer: ReturnType<typeof setInterval> | null = null
 
 const startDate = ref<Dayjs | null>(null)
 const endDate = ref<Dayjs | null>(null)
 
 onBeforeUnmount(() => {
   abortController?.abort()
-  if (progressTimer) clearInterval(progressTimer)
 })
 
 const formData = ref<TripPlanRequest>({
   city: '',
+  departure_city: '',
   start_date: '',
   end_date: '',
   days: 3,
-  preferences: '历史文化',
+  travelers: 1,
+  preferences: ['历史文化'],
+  extra_info: '',
   budget: '中等',
   transportation: '公共交通',
   accommodation: '经济型酒店',
 })
 
-const preferences = [
+const popularCities = ['北京', '上海', '广州', '深圳', '成都', '杭州', '重庆', '武汉', '西安', '南京', '长沙', '郑州', '东莞', '佛山', '合肥', '青岛', '天津', '苏州', '宁波', '厦门', '福州', '昆明', '沈阳', '大连', '济南']
+const departureOptions = popularCities.map(c => ({ value: c }))
+const filterDeparture = (input: string, option: any) => option.value.includes(input)
+
+const preferenceOptions = [
   { value: '历史文化', label: '历史文化', emoji: '🏛️' },
   { value: '自然风光', label: '自然风光', emoji: '🏔️' },
   { value: '美食之旅', label: '美食之旅', emoji: '🍜' },
@@ -293,15 +340,24 @@ const preferences = [
   { value: '购物娱乐', label: '购物娱乐', emoji: '🛍️' },
 ]
 
+const togglePreference = (value: string) => {
+  const idx = formData.value.preferences.indexOf(value)
+  if (idx >= 0) {
+    if (formData.value.preferences.length > 1) {
+      formData.value.preferences.splice(idx, 1)
+    }
+  } else {
+    formData.value.preferences.push(value)
+  }
+}
+
 const progressSteps = [
-  '准备规划参数',
-  '搜索景点信息',
-  '查询目的地天气',
-  '推荐合适住宿',
-  '计算旅行预算',
-  '生成每日行程',
-  '规划景点路线',
-  '整理最终计划',
+  '分析交通路线',
+  '景点专家搜索中',
+  '天气专家查询中',
+  '住宿专家推荐中',
+  '规划专家设计三方案',
+  '整理专家汇总中',
 ]
 
 const onStartDateChange = (date: Dayjs | null) => {
@@ -317,7 +373,13 @@ const onStartDateChange = (date: Dayjs | null) => {
 
 const onEndDateChange = (date: Dayjs | null) => {
   if (date) {
-    formData.value.end_date = date.format('YYYY-MM-DD')
+    // 如果结束日期早于开始日期，自动修正
+    if (startDate.value && date.isBefore(startDate.value)) {
+      endDate.value = startDate.value
+      formData.value.end_date = startDate.value.format('YYYY-MM-DD')
+    } else {
+      formData.value.end_date = date.format('YYYY-MM-DD')
+    }
     updateDays()
   }
 }
@@ -327,6 +389,10 @@ const updateDays = () => {
     const days = endDate.value.diff(startDate.value, 'day') + 1
     formData.value.days = Math.max(1, days)
   }
+}
+
+const disabledPastDate = (current: Dayjs) => {
+  return current && current.isBefore(dayjs().startOf('day'))
 }
 
 const handleSubmit = async () => {
@@ -343,32 +409,68 @@ const handleSubmit = async () => {
   loading.value = true
   loadingProgress.value = 0
   currentStep.value = 0
+  loadingStatus.value = '准备中...'
 
-  progressTimer = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value = Math.min(loadingProgress.value + Math.random() * 5 + 2, 90)
-      currentStep.value = Math.min(Math.floor(loadingProgress.value / 12.5), progressSteps.length - 1)
-      loadingStatus.value = progressSteps[currentStep.value]
+  // 渐进式进度条：先快后慢，真实反映后端处理节奏
+  const progressTimer = setInterval(() => {
+    if (currentStep.value <= 2) {
+      // 信息收集阶段：快速推进到 40%
+      loadingProgress.value = Math.min(loadingProgress.value + 4, 40)
+    } else if (currentStep.value === 3) {
+      // LLM 生成阶段（最慢）：缓慢爬升，120秒内从 40% → 95%
+      loadingProgress.value = Math.min(loadingProgress.value + 0.4, 95)
+    } else {
+      loadingProgress.value = Math.min(loadingProgress.value + 8, 100)
     }
-  }, 1500)
+  }, 500)
 
   try {
-    const response = await generateTripPlan(formData.value, abortController.signal)
-    if (progressTimer) clearInterval(progressTimer)
+    // 步骤 0-2：信息收集（真实 MCP/REST 调用在后台并行进行）
+    currentStep.value = 0
+    loadingStatus.value = '景点专家搜索中...'
+    await new Promise(r => setTimeout(r, 1500))
+
+    currentStep.value = 1
+    loadingStatus.value = '天气专家查询中...'
+    await new Promise(r => setTimeout(r, 1500))
+
+    currentStep.value = 2
+    loadingStatus.value = '住宿专家推荐中...'
+    await new Promise(r => setTimeout(r, 1000))
+
+    // 步骤 3：LLM 生成三个方案（真实耗时 50-120秒）
+    currentStep.value = 3
+    loadingStatus.value = '规划专家设计三个方案...'
+
+    // 实际请求
+    const response = await generateVariants(formData.value, abortController.signal)
+    clearInterval(progressTimer)
+
+    const validVariants = response.variants.filter((v: any) => v.plan)
+    if (validVariants.length === 0) {
+      message.error('所有方案生成失败，请稍后重试')
+      return
+    }
+
+    currentStep.value = 4
+    loadingProgress.value = 95
+    loadingStatus.value = '整理专家汇总中...'
+    await new Promise(r => setTimeout(r, 500))
+
     loadingProgress.value = 100
-    currentStep.value = progressSteps.length - 1
     loadingStatus.value = '完成'
 
-    sessionStorage.setItem('tripPlan', JSON.stringify(response))
-    setTimeout(() => router.push({ name: 'result' }), 400)
+    sessionStorage.setItem('tripVariants', JSON.stringify(response.variants))
+    sessionStorage.removeItem('tripPlan')
+    setTimeout(() => router.push({ name: 'compare' }), 400)
   } catch (error: unknown) {
-    if (progressTimer) clearInterval(progressTimer)
+    clearInterval(progressTimer)
     if (error instanceof ApiError) {
       message.error(`${error.message}${error.solution ? '，' + error.solution : ''}`, 5)
     } else if (error instanceof Error && error.name === 'AbortError') {
       // user navigated away
     } else {
-      message.error('生成计划失败，请稍后重试')
+      message.error('生成方案失败，请稍后重试')
     }
   } finally {
     loading.value = false
@@ -631,10 +733,6 @@ const handleSubmit = async () => {
   margin-bottom: var(--space-lg);
 }
 
-.form-row--hero {
-  grid-template-columns: 2fr 3fr;
-}
-
 .form-row--triple {
   grid-template-columns: 1fr 1fr 1fr;
 }
@@ -651,6 +749,18 @@ const handleSubmit = async () => {
   font-weight: 600;
   color: var(--color-charcoal);
   letter-spacing: 0.03em;
+}
+
+.label-hint {
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.field-hint {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
 }
 
 /* City input */
@@ -698,36 +808,38 @@ const handleSubmit = async () => {
   color: var(--color-light-gray);
 }
 
-/* Days selector */
-.days-selector {
+/* Days display */
+.days-display {
   display: flex;
+  align-items: baseline;
   gap: 6px;
-}
-
-.day-chip {
-  flex: 1;
-  height: 44px;
+  height: 56px;
+  padding: 0 16px;
+  background: var(--color-paper);
   border: 1.5px solid var(--color-light-gray);
   border-radius: var(--radius-md);
-  background: var(--color-paper);
+}
+
+.days-number {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--color-terracotta);
+  line-height: 1;
+}
+
+.days-unit {
   font-family: var(--font-body);
   font-size: 0.9rem;
-  font-weight: 500;
   color: var(--color-charcoal);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  font-weight: 500;
 }
 
-.day-chip:hover {
-  border-color: var(--color-terracotta-light);
-  color: var(--color-terracotta);
-}
-
-.day-chip.active {
-  background: var(--color-terracotta);
-  border-color: var(--color-terracotta);
-  color: white;
-  box-shadow: 0 2px 8px rgba(196, 101, 74, 0.25);
+.days-hint {
+  font-size: 0.7rem;
+  color: var(--color-warm-gray);
+  margin-left: auto;
+  font-style: italic;
 }
 
 /* Option chips */
@@ -774,10 +886,12 @@ const handleSubmit = async () => {
 .form-submit {
   margin-top: var(--space-xl);
   position: relative;
+  display: flex;
+  gap: 12px;
 }
 
 .submit-btn {
-  width: 100%;
+  flex: 1;
   height: 56px;
   border: none;
   border-radius: var(--radius-lg);
@@ -1063,17 +1177,12 @@ const handleSubmit = async () => {
   }
 
   .form-row,
-  .form-row--hero,
   .form-row--triple {
     grid-template-columns: 1fr;
   }
 
-  .days-selector {
-    flex-wrap: wrap;
-  }
-
-  .day-chip {
-    min-width: 44px;
+  .days-display {
+    height: 48px;
   }
 
   .option-grid {
@@ -1097,6 +1206,15 @@ const handleSubmit = async () => {
 
   .option-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .progress-steps {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .progress-step {
+    font-size: 0.65rem;
   }
 
   .planner-form {

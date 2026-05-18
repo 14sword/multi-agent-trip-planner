@@ -1,18 +1,31 @@
 <template>
-  <div id="wanderlust-app">
-    <router-view v-slot="{ Component }">
-      <transition name="page" mode="out-in">
-        <component :is="Component" />
-      </transition>
-    </router-view>
+  <div id="voyager-app">
+    <NavBar @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+    <SideBar :open="sidebarOpen" @close="sidebarOpen = false" />
+    <main class="main-content">
+      <router-view v-slot="{ Component }">
+        <transition name="page" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import NavBar from '@/components/NavBar.vue'
+import SideBar from '@/components/SideBar.vue'
+
+const sidebarOpen = ref(false)
 </script>
 
 <style>
-#wanderlust-app {
+#voyager-app {
+  min-height: 100vh;
+}
+
+.main-content {
   min-height: 100vh;
 }
 
