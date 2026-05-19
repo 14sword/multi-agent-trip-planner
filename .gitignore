@@ -74,3 +74,9 @@ build/
 .Trashes
 Icon?
 ehthumbs.db
+
+# Auto-generated
+frontend-redesigned/components.d.ts
+
+# User assets (not for version control)
+展示图片/

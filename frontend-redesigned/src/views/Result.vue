@@ -102,11 +102,15 @@
                   <span class="overview-label">目的地</span>
                   <span class="overview-value">{{ tripPlan.city }}</span>
                 </div>
-                <div class="overview-item" v-if="tripPlan.transport_info && tripPlan.transport_info.estimated_cost > 0">
+                <div class="overview-item" v-if="tripPlan.transport_info && tripPlan.transport_info.departure_city && tripPlan.transport_info.departure_city !== tripPlan.city">
                   <span class="overview-label">出发城市</span>
                   <span class="overview-value">{{ tripPlan.transport_info.departure_city }} → {{ tripPlan.transport_info.destination_city }}</span>
                 </div>
-                <div class="overview-item" v-if="tripPlan.transport_info && tripPlan.transport_info.estimated_cost > 0">
+                <div class="overview-item" v-if="!tripPlan.transport_info || !tripPlan.transport_info.departure_city || tripPlan.transport_info.departure_city === tripPlan.city">
+                  <span class="overview-label">城际路线</span>
+                  <span class="overview-value overview-hint">未设置出发城市，地图上不会显示跨城路线</span>
+                </div>
+                <div class="overview-item" v-if="tripPlan.transport_info && tripPlan.transport_info.departure_city && tripPlan.transport_info.departure_city !== tripPlan.city">
                   <span class="overview-label">交通方式</span>
                   <span class="overview-value">{{ tripPlan.transport_info.recommended_mode }}（约¥{{ tripPlan.transport_info.estimated_cost }}，{{ tripPlan.transport_info.estimated_duration }}）</span>
                 </div>
@@ -201,42 +205,86 @@
                   </div>
                 </div>
               </div>
-              <!-- 重置视图按钮 -->
-              <button class="map-reset-btn" @click="resetMapView" title="重置视图">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-              </button>
-              <button
-                v-if="showAnimBtn"
-                class="anim-play-btn"
-                :class="{ 'anim-play-btn--done': animDone, 'anim-play-btn--playing': animPlaying }"
-                @click="playTransportAnim"
-              >
-                <span v-if="animDone && !animPlaying">✅ 行程动画完成 · 点击重播</span>
-                <span v-else-if="animPlaying">{{ animStatusText }}</span>
-                <span v-else>▶ 播放行程动画</span>
-                <div v-if="animPlaying" class="anim-progress">
-                  <div class="anim-progress-bar" :style="{ width: animProgress + '%' }"></div>
+              <!-- 右侧折叠控制面板 -->
+            <div class="map-ctrl-panel" :class="{ 'map-ctrl-panel--collapsed': ctrlCollapsed }" v-if="!mapLoading">
+              <div class="map-ctrl-header" @click="ctrlCollapsed = !ctrlCollapsed">
+                <template v-if="ctrlCollapsed">
+                  <span v-if="tripPlan.transport_info && tripPlan.transport_info.departure_city && tripPlan.transport_info.departure_city !== tripPlan.city">
+                    🗺 {{ tripPlan.transport_info.departure_city }}→{{ tripPlan.city }}
+                  </span>
+                  <span v-else>🎮</span>
+                </template>
+                <span v-else class="map-ctrl-header-title">🎮 Voyager</span>
+                <span class="map-ctrl-toggle">{{ ctrlCollapsed ? '◂' : '▸' }}</span>
+              </div>
+
+              <div v-if="!ctrlCollapsed" class="map-ctrl-body">
+                <!-- 城际交通（可折叠） -->
+                <div
+                  v-if="tripPlan.transport_info && tripPlan.transport_info.departure_city && tripPlan.transport_info.departure_city !== tripPlan.city"
+                  class="map-ctrl-section"
+                >
+                  <div class="map-ctrl-section-header" @click="transInfoOpen = !transInfoOpen">
+                    <span>🗺 城际交通</span>
+                    <span class="map-ctrl-section-toggle">{{ transInfoOpen ? '▾' : '▸' }}</span>
+                  </div>
+                  <div v-if="transInfoOpen" class="map-ctrl-section-body">
+                    <div class="map-ctrl-transport">
+                      <span class="map-ctrl-depart">{{ tripPlan.transport_info.departure_city }}</span>
+                      <span class="map-ctrl-arrow">→</span>
+                      <span class="map-ctrl-dest">{{ tripPlan.city }}</span>
+                    </div>
+                    <div class="map-ctrl-mode">
+                      {{ tripPlan.transport_info.recommended_mode }}
+                      <span class="map-ctrl-cost">¥{{ tripPlan.transport_info.estimated_cost }}</span>
+                    </div>
+                    <div class="map-ctrl-duration" v-if="tripPlan.transport_info.estimated_duration">
+                      约 {{ tripPlan.transport_info.estimated_duration }}
+                    </div>
+                  </div>
                 </div>
-              </button>
-              <!-- 动画控制栏：暂停 + 速度 -->
-              <div v-if="animPlaying" class="anim-controls">
-                <button class="anim-ctrl-btn" @click="togglePause" :title="animPaused ? '继续' : '暂停'">
-                  {{ animPaused ? '▶' : '⏸' }}
+
+                <!-- 动画播放区（可折叠） -->
+                <div class="map-ctrl-section" v-if="showAnimBtn">
+                  <div class="map-ctrl-section-header" @click="animOpen = !animOpen">
+                    <span>{{ animDone ? '✅ 重播动画' : animPlaying ? '🎬 播放中' : '🎬 行程动画' }}</span>
+                    <span class="map-ctrl-section-toggle">{{ animOpen ? '▾' : '▸' }}</span>
+                  </div>
+                  <div v-if="animOpen || animPlaying" class="map-ctrl-section-body">
+                    <button
+                      class="ctrl-play-btn"
+                      :class="{ 'ctrl-play-btn--done': animDone, 'ctrl-play-btn--playing': animPlaying }"
+                      @click="playTransportAnim"
+                    >
+                      <span v-if="animDone && !animPlaying">▶ 重播</span>
+                      <span v-else-if="animPlaying">{{ animStatusText }}</span>
+                      <span v-else>▶ 播放</span>
+                    </button>
+
+                    <div v-if="animPlaying" class="ctrl-progress-bar">
+                      <div class="ctrl-progress-fill" :style="{ width: animProgress + '%' }"></div>
+                    </div>
+
+                    <div v-if="animPlaying" class="ctrl-anim-tools">
+                      <button class="ctrl-tool-btn" @click="togglePause">
+                        {{ animPaused ? '▶' : '⏸' }}
+                      </button>
+                      <button
+                        v-for="s in [1, 1.5, 2]" :key="s"
+                        class="ctrl-speed-btn"
+                        :class="{ active: animSpeed === s }"
+                        @click="animSpeed = s"
+                      >{{ s }}x</button>
+                    </div>
+                  </div>
+                </div>
+
+                <button class="ctrl-reset-btn" @click="resetMapView" title="重置视图">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  重置视图
                 </button>
-                <div class="anim-speed-group">
-                  <button v-for="s in [1, 1.5, 2]" :key="s" class="anim-speed-btn" :class="{ active: animSpeed === s }" @click="animSpeed = s">{{ s }}x</button>
-                </div>
               </div>
             </div>
-            <!-- 图例 -->
-            <div class="map-legend">
-              <div class="map-legend-item"><span class="legend-line legend-solid"></span>驾车</div>
-              <div class="map-legend-item"><span class="legend-line legend-dashed"></span>步行</div>
-              <div class="map-legend-item"><span class="legend-line legend-dotted"></span>直达</div>
-              <div class="map-legend-item"><span class="legend-line legend-interday"></span>跨天</div>
-              <div class="map-legend-item"><span class="legend-dot" style="background:#3b82f6;"></span>酒店</div>
-              <div class="map-legend-item"><span class="legend-dot" style="background:#10b981;"></span>餐厅</div>
-              <div class="map-legend-item"><span class="legend-dot" style="background:#8b5cf6;"></span>景点</div>
             </div>
           </section>
 
@@ -292,6 +340,8 @@ import DayCard from '@/components/DayCard.vue'
 import BudgetPanel from '@/components/BudgetPanel.vue'
 import WeatherGrid from '@/components/WeatherGrid.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { cityCenters } from '@/constants/cityCenters'
+import { useRouteDrawing } from '@/composables/useRouteDrawing'
 const loadHtml2Pdf = () => new Promise<typeof import('html2pdf.js')>((resolve, reject) => {
   if (window.html2pdf) { resolve(window.html2pdf); return }
   const s = document.createElement('script')
@@ -332,6 +382,9 @@ const animStatusText = ref('▶ 播放行程动画')
 const animSpeed = ref(1)
 const animPaused = ref(false)
 const navCollapsed = ref(false)
+const ctrlCollapsed = ref(true)
+const transInfoOpen = ref(false)
+const animOpen = ref(true)
 const dayPoints = ref<{ pos: [number, number]; type: string; name: string; detail?: any; _attrIdx?: number }[][]>([])
 let initMapVersion = 0
 
@@ -505,63 +558,7 @@ onMounted(() => {
   }
 })
 
-// 收集每天所有地点（酒店→早餐→景点→午餐→景点→晚餐→酒店）
-// 城市中心坐标常量（模块级，供 buildDayPoints 和 initMap 共用）
-const cityCenters: Record<string, [number, number]> = {
-  '北京': [116.397428, 39.90923],
-  '上海': [121.473701, 31.230416],
-  '广州': [113.264385, 23.129112],
-  '深圳': [114.057868, 22.543099],
-  '成都': [104.065735, 30.659462],
-  '杭州': [120.153576, 30.287459],
-  '武汉': [114.298572, 30.584355],
-  '西安': [108.948024, 34.263161],
-  '重庆': [106.504962, 29.533155],
-  '南京': [118.767413, 32.041544],
-  '厦门': [118.08942, 24.479833],
-  '苏州': [120.619585, 31.299015],
-  '昆明': [102.832891, 25.038898],
-  '丽江': [100.227106, 26.855161],
-  '大理': [100.225284, 25.590093],
-  '桂林': [110.299091, 25.274195],
-  '三亚': [109.50823, 18.247872],
-  '青岛': [120.355178, 36.082982],
-  '长沙': [112.938814, 28.228207],
-  '郑州': [113.665412, 34.757975],
-  '哈尔滨': [126.642464, 45.757161],
-  '沈阳': [123.429096, 41.796767],
-  '大连': [121.614682, 38.914003],
-  '济南': [117.000923, 36.675807],
-  '福州': [119.306239, 26.075302],
-  '合肥': [117.283042, 31.86119],
-  '南昌': [115.892151, 28.676493],
-  '贵阳': [106.713478, 26.578343],
-  '太原': [112.549248, 37.857014],
-  '石家庄': [114.514859, 38.042838],
-  '兰州': [103.834303, 36.0611],
-  '乌鲁木齐': [87.617733, 43.792818],
-  '拉萨': [91.132212, 29.660015],
-  '呼和浩特': [111.670801, 40.818311],
-  '银川': [106.278179, 38.46637],
-  '西宁': [101.778228, 36.623178],
-  '海口': [110.349228, 20.017377],
-  '珠海': [113.553986, 22.270715],
-  '东莞': [113.746262, 23.046237],
-  '无锡': [120.311914, 31.491169],
-  '宁波': [121.544006, 29.871489],
-  '天津': [117.190182, 39.125595],
-  '常州': [119.974062, 31.811233],
-  '温州': [120.699367, 28.000026],
-  '嘉兴': [120.750865, 30.753923],
-  '绍兴': [120.582112, 30.000168],
-  '金华': [119.649445, 29.079059],
-  '台州': [121.420757, 28.656683],
-  '泉州': [118.67587, 24.874132],
-  '漳州': [117.661811, 24.510897],
-  '洛阳': [112.453981, 34.619682],
-  '开封': [114.341447, 34.798636],
-  '黄山': [118.341379, 29.954451],
-}
+// cityCenters 从 @/constants/cityCenters 导入
 
 const buildDayPoints = () => {
   const rawCity = tripPlan.value.city || ''
@@ -836,7 +833,17 @@ const initMap = async () => {
             await Promise.all(tasks)
           }
 
-          // 异步执行地理编码，完成后刷新标记和导航面板
+          // ===== 路线绘制 composable（距离感知 + 自适应降级链）=====
+          const { segmentCache, drawnSegments, getRoutesReady, drawAllRoutes, getDayRoutes, resetAndRedraw, redrawWithReady } = useRouteDrawing({
+            map: () => map,
+            tripPlan: () => tripPlan.value,
+            dayPoints: () => dayPoints.value,
+            dayPositions,
+            dayColors,
+            onRouteCompleted: () => {}
+          })
+
+          // 异步执行地理编码，完成后刷新标记并绘制路线（仅一次）
           geocodeMissing().then(() => {
             if (myVersion !== initMapVersion || !map) return
             // 重新收集 dayPoints（含新解析的坐标）
@@ -844,7 +851,6 @@ const initMap = async () => {
             // 重建标记：移除旧标记，基于更新后的坐标重新创建
             contentMarkers.forEach(m => { if (map) map.remove(m) })
             contentMarkers = []
-            const dayColors = ['#C4654A', '#2d6a4f', '#457b9d', '#e76f51', '#6d597a']
             dayPoints.value.forEach((points, dIdx) => {
               const dayColor = dayColors[dIdx % dayColors.length]
               points.forEach((pt) => {
@@ -856,16 +862,10 @@ const initMap = async () => {
             // 更新 dayPositions 用于动画路线
             dayPositions.length = 0
             dayPoints.value.forEach(points => dayPositions.push(points.map(p => p.pos)))
-            // 清除路线缓存，坐标已更新需重新计算
-            segmentCache.clear()
-            drawnSegments.clear()
-            // 重置路线完成计数，重建 routesReady promise
-            completedSegments = 0
-            routeGen++
-            recalcSegments()
-            routesReady = new Promise<void>((r) => { routesReadyResolve = r })
-            drawAllRoutes()
-          }).catch(() => {})
+            resetAndRedraw()
+          }).catch(() => {
+            redrawWithReady()
+          })
 
           // ===== 城际交通动画 =====
           const transportInfo = tripPlan.value.transport_info
@@ -874,7 +874,7 @@ const initMap = async () => {
           const destCoords = (transportInfo?.arrival_longitude && transportInfo?.arrival_latitude)
             ? [transportInfo.arrival_longitude, transportInfo.arrival_latitude] as [number, number]
             : cityCenters[tripPlan.value.city]
-          if (depCoords && destCoords && transportInfo && transportInfo.estimated_cost > 0) {
+          if (depCoords && destCoords && transportInfo && transportInfo.departure_city && transportInfo.departure_city !== tripPlan.value.city) {
             // 调整地图视野以包含两端
             map.setFitView(null, false, [60, 60, 60, 60])
 
@@ -884,60 +884,47 @@ const initMap = async () => {
             const transportEmoji = isFlight ? '✈️' : isTrain ? '🚄' : '🚗'
             const arcColor = isFlight ? '#3b82f6' : isTrain ? '#10b981' : '#f59e0b'
 
-            // 城际路线：驾车/高铁尝试真实路线，飞机用弧线
+            // 城际路线：统一使用后端代理 + 自适应降级链（与 POI 路线一致）
             let intercityPath: [number, number][] = []
             const intercityReady = new Promise<void>((resolve) => {
-              if (!isFlight) {
-                // 非飞行模式：尝试 Driving API 获取真实路线
-                // 三级降级：JS API Driving → 后端代理 → 弧线兜底
-                const tryIntercityProxy = () => {
-                  const originStr = `${depCoords[0]},${depCoords[1]}`
-                  const destStr = `${destCoords[0]},${destCoords[1]}`
-                  fetch(`/api/trip/route?origin=${originStr}&destination=${destStr}&mode=driving`)
-                    .then(r => r.json())
-                    .then((data: any) => {
-                      if (data.path && data.path.length > 0) {
-                        intercityPath = data.path
-                        console.log(`[城际路线] 代理成功，${data.path.length} 个路径点`)
-                      } else {
-                        console.warn(`[城际路线] 代理返回空路径，使用弧线兜底`)
-                      }
-                      resolve()
-                    })
-                    .catch(() => {
-                      console.warn(`[城际路线] 代理失败，使用弧线兜底`)
-                      resolve()
-                    })
-                }
-                try {
-                  const interDriving = new AMap.Driving({ policy: AMap.DrivingPolicy.LEAST_TIME })
-                  interDriving.search(
-                    new AMap.LngLat(depCoords[0], depCoords[1]),
-                    new AMap.LngLat(destCoords[0], destCoords[1]),
-                    (status: string, result: any) => {
-                      if (status === 'complete') {
-                        const path = extractPath(result)
-                        if (path.length > 0) {
-                          intercityPath = path
-                          console.log(`[城际路线] JS API 成功，${path.length} 个路径点`)
-                          resolve()
-                          return
-                        }
-                      }
-                      console.warn(`[城际路线] JS API 失败 (${status})，尝试后端代理`)
-                      tryIntercityProxy()
-                    }
-                  )
-                } catch {
-                  console.warn(`[城际路线] JS API 不可用，尝试后端代理`)
-                  tryIntercityProxy()
-                }
-              } else {
+              if (isFlight) {
                 resolve()
+                return
               }
+              const interModes = ['driving', 'transit', 'walking']
+              let interModeIdx = 0
+              const tryIntercityMode = () => {
+                const originStr = `${depCoords[0]},${depCoords[1]}`
+                const destStr = `${destCoords[0]},${destCoords[1]}`
+                fetch(`/api/trip/route?origin=${originStr}&destination=${destStr}&mode=${interModes[interModeIdx]}`)
+                  .then(r => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+                    return r.json()
+                  })
+                  .then((data: any) => {
+                    if (data.path && data.path.length > 0) {
+                      intercityPath = data.path
+                      console.log(`[城际路线] ${interModes[interModeIdx]} 成功，${data.path.length} 个路径点`)
+                      resolve()
+                    } else {
+                      throw new Error('empty path')
+                    }
+                  })
+                  .catch(() => {
+                    interModeIdx++
+                    if (interModeIdx < interModes.length) {
+                      console.warn(`[城际路线] ${interModes[interModeIdx - 1]} 失败 → 尝试 ${interModes[interModeIdx]}`)
+                      setTimeout(() => tryIntercityMode(), 300)
+                    } else {
+                      console.warn(`[城际路线] 所有模式失败，使用弧线兜底`)
+                      resolve()
+                    }
+                  })
+              }
+              tryIntercityMode()
             })
 
-            // 计算贝塞尔曲线控制点（仅飞机用弧线）
+            // 始终计算贝塞尔曲线作为兜底路线
             const midLng = (depCoords[0] + destCoords[0]) / 2
             const midLat = (depCoords[1] + destCoords[1]) / 2
             const dist = Math.sqrt(
@@ -945,28 +932,24 @@ const initMap = async () => {
               Math.pow(depCoords[1] - destCoords[1], 2)
             )
 
-            // 飞机：画弧线 | 高铁/驾车：不画弧线，等真实路线
-            let arcGlow: any = null, arcAnimated: any = null
-            let bezierPoints: [number, number][] = []
-
-            if (isFlight) {
-              const arcHeight = dist * 0.15
-              const controlPoint = [midLng, midLat + arcHeight]
-              for (let i = 0; i <= 80; i++) {
-                const t = i / 80
-                bezierPoints.push([
-                  (1 - t) * (1 - t) * depCoords[0] + 2 * (1 - t) * t * controlPoint[0] + t * t * destCoords[0],
-                  (1 - t) * (1 - t) * depCoords[1] + 2 * (1 - t) * t * controlPoint[1] + t * t * destCoords[1],
-                ])
-              }
-              arcGlow = new AMap.Polyline({ path: bezierPoints, strokeColor: arcColor, strokeWeight: 14, strokeOpacity: 0.12, lineJoin: 'round', lineCap: 'round' })
-              map.add(arcGlow)
-              arcAnimated = new AMap.Polyline({ path: bezierPoints, strokeColor: arcColor, strokeWeight: 4, strokeOpacity: 0.8, lineJoin: 'round', lineCap: 'round' })
-              map.add(arcAnimated)
+            const arcHeight = dist * 0.15
+            const controlPoint = [midLng, midLat + arcHeight]
+            const bezierPoints: [number, number][] = []
+            for (let i = 0; i <= 80; i++) {
+              const t = i / 80
+              bezierPoints.push([
+                (1 - t) * (1 - t) * depCoords[0] + 2 * (1 - t) * t * controlPoint[0] + t * t * destCoords[0],
+                (1 - t) * (1 - t) * depCoords[1] + 2 * (1 - t) * t * controlPoint[1] + t * t * destCoords[1],
+              ])
             }
 
+            let arcGlow = new AMap.Polyline({ path: bezierPoints, strokeColor: arcColor, strokeWeight: 14, strokeOpacity: 0.12, lineJoin: 'round', lineCap: 'round' })
+            map.add(arcGlow)
+            let arcAnimated = new AMap.Polyline({ path: bezierPoints, strokeColor: arcColor, strokeWeight: 4, strokeOpacity: 0.8, lineJoin: 'round', lineCap: 'round' })
+            map.add(arcAnimated)
+
             // 城际交通方式标签（在路线中点）
-            const labelPos = isFlight && bezierPoints.length > 0
+            const labelPos: [number, number] = (isFlight || bezierPoints.length > 0)
               ? bezierPoints[Math.floor(bezierPoints.length / 2)]
               : [(depCoords[0] + destCoords[0]) / 2, (depCoords[1] + destCoords[1]) / 2]
             const intercityModeLabel = isFlight ? '✈️ 飞机' : isTrain ? '🚄 高铁' : '🚗 驾车'
@@ -1056,6 +1039,7 @@ const initMap = async () => {
                 // 重播：重置动画状态
                 ;(window as any).__resetTransportAnim = () => {
                   animPlayed = false
+                  if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null }
                   // 清除旧的浮动动画元素
                   const mc = document.getElementById('amap-container')
                   if (mc) mc.querySelectorAll('.amap-anim-elem').forEach(el => el.remove())
@@ -1261,6 +1245,7 @@ const initMap = async () => {
                       if (progress < 1) {
                         animFrameId = requestAnimationFrame(tick)
                       } else {
+                        animFrameId = null
                         // 清理 Canvas 拖尾
                         if (trailCtx && trailCanvas) {
                           trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height)
@@ -1282,7 +1267,17 @@ const initMap = async () => {
                   if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null }
 
                   await intercityReady
-                  await routesReady  // 等待所有路线绘制完成
+                  await getRoutesReady()  // 等待所有路线绘制完成
+
+                  // 校验路线质量：检测使用直线兜底的路段
+                  let directSegments = 0
+                  drawnSegments.forEach(k => {
+                    const seg = segmentCache.get(k)
+                    if (seg && seg.length <= 2) directSegments++
+                  })
+                  if (directSegments > 0) {
+                    console.warn(`[动画校验] ${directSegments} 个路段使用直线兜底，动画效果可能不平滑`)
+                  }
 
                   const localRoutes = getDayRoutes()
                   const localCount = localRoutes.filter(r => r && r.length > 0).length
@@ -1292,7 +1287,7 @@ const initMap = async () => {
                   // 阶段1：城际交通
                   const cityPath = intercityPath.length > 0 ? intercityPath : bezierPoints
                   animStatusText.value = isFlight ? '✈️ 飞行中...' : isTrain ? '🚄 列车行驶中...' : '🚗 驾车前往...'
-                  await animateAlongPath(cityPath, transportEmoji, arcColor, `${transportInfo.departure_city} → ${tripPlan.value.city}`, 2000)
+                  await animateAlongPath(cityPath, transportEmoji, arcColor, `${transportInfo.departure_city} → ${tripPlan.value.city}`, 2500)
                   currentPhase++
                   animProgress.value = Math.round((currentPhase / totalPhases) * 100)
 
@@ -1306,12 +1301,12 @@ const initMap = async () => {
                       if (!route || route.length === 0) continue
 
                       animStatusText.value = `🚗 Day ${dayIdx + 1} 行程中...`
-                      await animateAlongPath(route, '🚗', dayColors[dayIdx % dayColors.length], `Day ${dayIdx + 1} · ${tripPlan.value.days[dayIdx]?.description || '行程'}`, 1500)
+                      await animateAlongPath(route, '🚗', dayColors[dayIdx % dayColors.length], `Day ${dayIdx + 1} · ${tripPlan.value.days[dayIdx]?.description || '行程'}`, 2000)
                       currentPhase++
                       animProgress.value = Math.round((currentPhase / totalPhases) * 100)
 
                       if (dayIdx < localRoutes.length - 1) {
-                        await new Promise(r => setTimeout(r, 200))
+                        await new Promise(r => setTimeout(r, 300))
                       }
                     }
                   }
@@ -1348,299 +1343,6 @@ const initMap = async () => {
                 })
               }
             }
-          }
-
-          // 按天绘制路线 + 收集路线点用于动画
-          const segmentCache: Map<string, [number, number][]> = new Map()
-          const drawnSegments: Set<string> = new Set()  // 防止 fallback 链重复绘制
-
-          // 从路线结果中提取路径点
-          const extractPath = (result: any): [number, number][] => {
-            if (!result?.routes?.length) return []
-            const route = result.routes[0]
-            const path: [number, number][] = []
-            for (const leg of route.legs) {
-              for (const step of leg.steps) {
-                for (const p of step.path) {
-                  path.push([p.lng ?? p[0], p.lat ?? p[1]])
-                }
-              }
-            }
-            return path
-          }
-
-          // Douglas-Peucker 路径简化：保留主干道路，去除冗余点
-          const simplifyPath = (pts: [number, number][], tolerance: number = 0.0005): [number, number][] => {
-            if (pts.length <= 2) return pts
-            // 找到距离起点-终点连线最远的点
-            let maxDist = 0, maxIdx = 0
-            const [sx, sy] = pts[0], [ex, ey] = pts[pts.length - 1]
-            const dx = ex - sx, dy = ey - sy
-            const lenSq = dx * dx + dy * dy
-            for (let i = 1; i < pts.length - 1; i++) {
-              const t = Math.max(0, Math.min(1, ((pts[i][0] - sx) * dx + (pts[i][1] - sy) * dy) / lenSq))
-              const px = sx + t * dx, py = sy + t * dy
-              const dist = Math.sqrt((pts[i][0] - px) ** 2 + (pts[i][1] - py) ** 2)
-              if (dist > maxDist) { maxDist = dist; maxIdx = i }
-            }
-            if (maxDist > tolerance) {
-              const left = simplifyPath(pts.slice(0, maxIdx + 1), tolerance)
-              const right = simplifyPath(pts.slice(maxIdx), tolerance)
-              return left.slice(0, -1).concat(right)
-            }
-            return [pts[0], pts[pts.length - 1]]
-          }
-
-          // 绘制路线：驾车 → 步行 → 直线兜底
-          const drawRoute = (
-            origin: any, destination: any, segKey: string,
-            color: string, p0: [number, number], p1: [number, number],
-            onDone?: () => void, isMealSeg?: boolean, isArrivalSeg?: boolean, isReturnSeg?: boolean, isInterDaySeg?: boolean,
-          ) => {
-            // 在路线中点添加交通方式+距离标签
-            const addModeLabel = (path: [number, number][], mode: string) => {
-              if (!map || path.length < 2) return
-              const midIdx = Math.floor(path.length / 2)
-              const mid = path[midIdx]
-              let totalDist = 0
-              for (let i = 1; i < path.length; i++) {
-                const dx = (path[i][0] - path[i-1][0]) * 111
-                const dy = (path[i][1] - path[i-1][1]) * 111
-                totalDist += Math.sqrt(dx*dx + dy*dy)
-              }
-              const distText = totalDist < 1 ? `${Math.round(totalDist * 1000)}m` : `${totalDist.toFixed(1)}km`
-              const speedMap: Record<string, number> = { driving: 40, walking: 5, direct: 30 }
-              const estMin = Math.round(totalDist / (speedMap[mode] || 30) * 60)
-              const timeText = estMin < 1 ? '<1分钟' : estMin > 60 ? `${Math.round(estMin/60)}小时${estMin%60}分` : `${estMin}分钟`
-              let icon = '📍'
-              let labelBg = 'white'
-              let labelColor = '#555'
-              if (isInterDaySeg) {
-                icon = '🔄'
-                labelBg = '#f1f5f9'
-                labelColor = '#64748b'
-              } else if (isArrivalSeg) {
-                icon = ti?.recommended_mode?.includes('飞机') ? '✈️' : '🚄'
-                labelBg = '#eff6ff'
-                labelColor = '#3b82f6'
-              } else if (isReturnSeg) {
-                icon = '🏨'
-                labelBg = '#fffbeb'
-                labelColor = '#f59e0b'
-              } else {
-                const modeIcons: Record<string, string> = { driving: '🚗', walking: '🚶', direct: '📍' }
-                icon = modeIcons[mode] || '📍'
-              }
-              const modeMarker = new AMap.Marker({
-                position: new AMap.LngLat(mid[0], mid[1]),
-                content: `<div style="background:${labelBg};padding:3px 8px;border-radius:10px;font-size:9px;color:${labelColor};white-space:nowrap;box-shadow:0 1px 6px rgba(0,0,0,0.12);border:1px solid rgba(0,0,0,0.06);font-family:var(--font-body);font-weight:500;pointer-events:none;display:flex;align-items:center;gap:4px;">
-                  <span>${icon}</span>
-                  <span style="color:#333;font-weight:600;">${distText}</span>
-                  <span style="color:#999;">·</span>
-                  <span style="color:#666;">${timeText}</span>
-                </div>`,
-                offset: new AMap.Pixel(-30, -8),
-                zIndex: 80,
-              })
-              map.add(modeMarker)
-            }
-
-            const addPolyline = (path: [number, number][], opacity: number, mode?: string) => {
-              if (!map || path.length === 0) return
-              const displayPath = path
-              segmentCache.set(segKey, displayPath)
-              drawnSegments.add(segKey)
-              // 确定颜色和线型
-              const lineColor = isInterDaySeg ? '#94a3b8' : isArrivalSeg ? '#3b82f6' : color
-              const glowWeight = isMealSeg ? 6 : isInterDaySeg ? 12 : 18
-              const mainWeight = isMealSeg ? 3 : isInterDaySeg ? 4 : isArrivalSeg || isReturnSeg ? 5 : 6
-              const mainOpacity = isMealSeg ? opacity * 0.7 : isInterDaySeg ? 0.6 : Math.min(opacity, 0.95)
-              // 底层发光效果（让路线更醒目）
-              map.add(new AMap.Polyline({
-                path: displayPath, strokeColor: lineColor, strokeWeight: glowWeight,
-                strokeOpacity: isMealSeg ? 0.12 : 0.25, lineJoin: 'round', lineCap: 'round',
-              }))
-              // 主路线 — 到达/返回/跨天用虚线，其余按交通方式
-              let lineStyle: Record<string, any>
-              if (isInterDaySeg) {
-                lineStyle = { strokeStyle: 'dashed', strokeDasharray: [6, 8], showDir: false }
-              } else if (isArrivalSeg || isReturnSeg) {
-                lineStyle = { strokeStyle: 'dashed', strokeDasharray: [10, 6], showDir: false }
-              } else {
-                lineStyle = {
-                  driving: { showDir: false },
-                  walking: { strokeStyle: 'dashed', strokeDasharray: [8, 6], showDir: false },
-                  direct: { strokeStyle: 'solid', showDir: false },
-                }[mode || 'driving'] || { showDir: false }
-              }
-              map.add(new AMap.Polyline({
-                path: displayPath, strokeColor: lineColor, strokeWeight: mainWeight,
-                strokeOpacity: mainOpacity, lineJoin: 'round', lineCap: 'round',
-                ...lineStyle,
-              }))
-            }
-
-            // 后端代理优先（可靠），JS API Driving 作为备用
-            const tryBackendProxy = (fallbackMode: string = 'driving') => {
-              // 防止 fallback 链重复绘制同一路段
-              if (drawnSegments.has(segKey)) { onDone?.(); return }
-              console.log(`[路线规划] 请求 ${segKey}: mode=${fallbackMode}`)
-              const originStr = `${p0[0]},${p0[1]}`
-              const destStr = `${p1[0]},${p1[1]}`
-              const cityParam = encodeURIComponent(tripPlan.value.city || '')
-              const controller = new AbortController()
-              const timer = setTimeout(() => controller.abort(), 8000)
-              fetch(`/api/trip/route?origin=${originStr}&destination=${destStr}&mode=${fallbackMode}&city=${cityParam}`, { signal: controller.signal })
-                .then(r => {
-                  clearTimeout(timer)
-                  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-                  return r.json()
-                })
-                .then((data: any) => {
-                  if (!map) { onDone?.(); return }
-                  if (data.path && data.path.length > 0) {
-                    const routePath: [number, number][] = data.path
-                    const routeMode = data.mode || fallbackMode
-                    console.log(`[路线规划] ✓ ${segKey} 绘制成功: ${routeMode}, ${routePath.length}点`)
-                    addPolyline(routePath, 0.85, routeMode)
-                    if (!isMealSeg) addModeLabel(routePath, routeMode)
-                    onDone?.()
-                  } else if (fallbackMode === 'driving') {
-                    console.warn(`[路线规划] driving 空路径 (${segKey}) → 尝试 transit`)
-                    tryBackendProxy('transit')
-                  } else if (fallbackMode === 'transit') {
-                    console.warn(`[路线规划] transit 空路径 (${segKey}) → 尝试 walking`)
-                    tryBackendProxy('walking')
-                  } else {
-                    console.warn(`[路线规划] 所有模式失败 (${segKey})，不绘制路线`)
-                    onDone?.()
-                  }
-                })
-                .catch((err) => {
-                  clearTimeout(timer)
-                  console.warn(`[路线规划] 代理失败 (${segKey}, ${fallbackMode}):`, err?.message)
-                  if (fallbackMode === 'driving') {
-                    tryBackendProxy('transit')
-                  } else if (fallbackMode === 'transit') {
-                    tryBackendProxy('walking')
-                  } else {
-                    onDone?.()
-                  }
-                })
-            }
-
-            // 第一优先：后端代理（可靠，已验证可用）
-            tryBackendProxy('driving')
-          }
-
-          // 路线 API 并发限制（最多同时 3 个请求，避免触发限流）
-          const ROUTE_CONCURRENCY = 3
-          let routeActive = 0
-          const routeQueue: (() => void)[] = []
-          const runRoute = (fn: () => void) => {
-            if (routeActive < ROUTE_CONCURRENCY) {
-              routeActive++
-              fn()
-            } else {
-              routeQueue.push(fn)
-            }
-          }
-          const routeDone = () => {
-            routeActive--
-            if (routeQueue.length > 0) {
-              routeActive++
-              routeQueue.shift()!()
-            }
-          }
-
-          // 计算总路线段数，完成后自动缩放适配
-          let totalSegments = 0
-          let completedSegments = 0
-          let routeGen = 0  // 路线绘制代次，geocoding 重绘时递增
-          let routesReadyResolve: (() => void) | null = null
-          let routesReady = new Promise<void>((r) => { routesReadyResolve = r })
-          const recalcSegments = () => {
-            totalSegments = 0
-            dayPositions.forEach((positions) => {
-              if (positions.length >= 2) totalSegments += positions.length - 1
-            })
-          }
-          recalcSegments()
-          console.log(`[路线规划] 共 ${totalSegments} 个路段待绘制`)
-          const originalRouteDone = routeDone
-          const routeDoneWithFitView = () => {
-            completedSegments++
-            originalRouteDone()
-            if (completedSegments >= totalSegments) {
-              routesReadyResolve?.()
-              if (map) setTimeout(() => { if (map) map.setFitView(null, false, [60, 60, 60, 60]) }, 300)
-            }
-          }
-
-          const drawAllRoutes = () => {
-            dayPositions.forEach((positions, dayIdx) => {
-              if (positions.length < 2) return
-              const color = dayColors[dayIdx % dayColors.length]
-              const dayPts = dayPoints.value[dayIdx] || []
-              for (let i = 0; i < positions.length - 1; i++) {
-                // 同坐标跳过（如返回酒店与出发酒店相同）
-                if (positions[i][0] === positions[i + 1][0] && positions[i][1] === positions[i + 1][1]) {
-                  routeDoneWithFitView()
-                  continue
-                }
-                const fromType = dayPts[i]?.type || ''
-                const toType = dayPts[i + 1]?.type || ''
-                const isMealSeg = fromType === 'meal' || toType === 'meal'
-                const isArrivalSeg = fromType === 'arrival'
-                const isReturnSeg = toType === 'hotel' && i === positions.length - 2
-                const origin = new AMap.LngLat(positions[i][0], positions[i][1])
-                const destination = new AMap.LngLat(positions[i + 1][0], positions[i + 1][1])
-                runRoute(() => drawRoute(origin, destination, `${dayIdx}-${i}`, color, positions[i], positions[i + 1], routeDoneWithFitView, isMealSeg, isArrivalSeg, isReturnSeg))
-              }
-            })
-            // 跨天连接：Day N 最后一个点 → Day N+1 第一个点
-            for (let d = 0; d < dayPositions.length - 1; d++) {
-              const lastPos = dayPositions[d]
-              const nextPos = dayPositions[d + 1]
-              if (!lastPos?.length || !nextPos?.length) continue
-              const from = lastPos[lastPos.length - 1]
-              const to = nextPos[0]
-              // 同坐标（同一酒店）跳过
-              if (from[0] === to[0] && from[1] === to[1]) continue
-              const origin = new AMap.LngLat(from[0], from[1])
-              const destination = new AMap.LngLat(to[0], to[1])
-              runRoute(() => drawRoute(origin, destination, `interday-${d}`, '#94a3b8', from, to, routeDoneWithFitView, false, false, false, true))
-            }
-          }
-          drawAllRoutes()
-
-          // 合并每天的分段路线（按顺序）— 动画启动时实时读取
-          // 去重：相邻分段的首尾重叠点只保留一个，避免动画卡顿
-          const getDayRoutes = () => {
-            const routes: [number, number][][] = []
-            dayPositions.forEach((positions, dayIdx) => {
-              if (positions.length < 2) return
-              const route: [number, number][] = []
-              for (let i = 0; i < positions.length - 1; i++) {
-                const seg = segmentCache.get(`${dayIdx}-${i}`)
-                if (seg && seg.length > 0) {
-                  // 跳过与上一段末尾重复的点
-                  if (route.length > 0) {
-                    const last = route[route.length - 1]
-                    const start = seg[0]
-                    if (last[0] === start[0] && last[1] === start[1]) {
-                      route.push(...seg.slice(1))
-                    } else {
-                      route.push(...seg)
-                    }
-                  } else {
-                    route.push(...seg)
-                  }
-                }
-              }
-              routes[dayIdx] = route
-            })
-            return routes
           }
       }
     } catch (apiError) {
@@ -1852,6 +1554,7 @@ const playTransportAnim = () => {
   // 重播：重置状态后重新调用播放
   if (animDone.value) {
     animDone.value = false
+    animStatusText.value = '▶ 重播中...'
     animProgress.value = 0
     animPaused.value = false
     animSpeed.value = 1
@@ -2250,6 +1953,12 @@ onBeforeUnmount(() => {
   color: var(--color-charcoal);
 }
 
+.overview-value.overview-hint {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--color-warm-gray);
+}
+
 .overview-suggestion {
   padding: var(--space-md);
   background: var(--color-sand-light);
@@ -2304,94 +2013,201 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-card), 0 8px 32px rgba(0,0,0,0.06);
 }
 
-.anim-play-btn {
+/* === 右侧折叠控制面板 === */
+.map-ctrl-panel {
   position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  padding: 10px 28px;
-  border: none;
-  border-radius: 24px;
-  background: linear-gradient(135deg, #c67b5c, #a65d3f);
-  color: white;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(198, 123, 92, 0.35);
-  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  white-space: nowrap;
+  top: 12px;
+  right: 12px;
+  z-index: 15;
+  width: 180px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(232, 226, 218, 0.6);
+  transition: all 0.25s ease;
   font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--color-charcoal);
   overflow: hidden;
 }
 
-.anim-play-btn:hover {
-  transform: translateX(-50%) translateY(-2px);
-  box-shadow: 0 6px 24px rgba(198, 123, 92, 0.45);
-  background: linear-gradient(135deg, #d4856a, #b4684d);
+.map-ctrl-panel--collapsed {
+  width: auto;
+  min-width: 44px;
 }
 
-.anim-play-btn:active {
-  transform: translateX(-50%) translateY(0);
+.map-ctrl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(232, 226, 218, 0.4);
+  transition: background 0.15s;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--color-terracotta);
 }
 
-.anim-play-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.85;
+.map-ctrl-header:hover {
+  background: rgba(196, 101, 74, 0.05);
 }
 
-.anim-play-btn--playing {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
-  animation: pulse-glow 1.5s ease-in-out infinite;
-  font-size: 0.82rem;
-  min-width: 200px;
-  text-align: center;
+.map-ctrl-header-title {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35); }
-  50% { box-shadow: 0 4px 24px rgba(59, 130, 246, 0.55); }
+.map-ctrl-toggle {
+  font-size: 10px;
+  color: var(--color-warm-gray);
 }
 
-.anim-play-btn--done {
-  background: linear-gradient(135deg, #2d6a4f, #1b4332);
-  box-shadow: 0 4px 16px rgba(45, 106, 79, 0.35);
+.map-ctrl-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.anim-play-btn--done:hover {
-  background: linear-gradient(135deg, #3a7d5e, #234d3a);
-}
-
-.anim-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: rgba(255,255,255,0.2);
-  border-radius: 0 0 24px 24px;
+.map-ctrl-section {
+  border: 1px solid rgba(232, 226, 218, 0.4);
+  border-radius: 8px;
   overflow: hidden;
 }
 
-.anim-progress-bar {
-  height: 100%;
-  background: white;
-  border-radius: 0 0 24px 24px;
-  transition: width 0.3s ease;
+.map-ctrl-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  background: rgba(232, 226, 218, 0.2);
+  transition: background 0.15s;
 }
 
-/* 动画控制栏 */
-.anim-controls {
+.map-ctrl-section-header:hover {
+  background: rgba(196, 101, 74, 0.08);
+}
+
+.map-ctrl-section-toggle {
+  font-size: 9px;
+  color: var(--color-warm-gray);
+}
+
+.map-ctrl-section-body {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 城际交通 */
+.map-ctrl-transport {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  font-weight: 600;
+  font-size: 0.82rem;
 }
-.anim-ctrl-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+
+.map-ctrl-arrow {
+  color: var(--color-terracotta);
+  font-size: 0.7rem;
+}
+
+.map-ctrl-mode {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-ctrl-cost {
+  color: var(--color-terracotta);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.map-ctrl-duration {
+  font-size: 0.65rem;
+  color: var(--color-warm-gray);
+}
+
+/* 播放按钮（紧凑版） */
+.ctrl-play-btn {
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #C4654A, #a65d3f);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(196, 101, 74, 0.3);
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: var(--font-body);
+}
+
+.ctrl-play-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(196, 101, 74, 0.4);
+}
+
+.ctrl-play-btn--playing {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.35);
+  animation: ctrl-pulse 2s ease-in-out infinite;
+}
+
+.ctrl-play-btn--done {
+  background: linear-gradient(135deg, #2d6a4f, #1b4332);
+  box-shadow: 0 2px 8px rgba(45, 106, 79, 0.3);
+}
+
+@keyframes ctrl-pulse {
+  0%, 100% { box-shadow: 0 2px 12px rgba(59, 130, 246, 0.35); }
+  50% { box-shadow: 0 2px 20px rgba(59, 130, 246, 0.5); }
+}
+
+/* 进度条 */
+.ctrl-progress-bar {
+  height: 3px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ctrl-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-terracotta), #3b82f6);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* 动画工具 */
+.ctrl-anim-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ctrl-tool-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
   border: 1.5px solid var(--color-primary);
   background: white;
   color: var(--color-primary);
@@ -2400,71 +2216,52 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  flex-shrink: 0;
 }
-.anim-ctrl-btn:hover { background: var(--color-primary); color: white; }
-.anim-speed-group {
-  display: flex;
-  gap: 3px;
-  background: var(--color-sand-light);
-  border-radius: 12px;
-  padding: 2px;
-}
-.anim-speed-btn {
-  padding: 2px 8px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  font-size: 11px;
+
+.ctrl-tool-btn:hover { background: var(--color-primary); color: white; }
+
+.ctrl-speed-btn {
+  padding: 3px 8px;
+  border: 1.5px solid rgba(232, 226, 218, 0.8);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.65rem;
   font-weight: 600;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
-}
-.anim-speed-btn.active {
-  background: var(--color-primary);
-  color: white;
-}
-
-/* 图例 */
-.map-legend {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background: rgba(255,255,255,0.92);
-  backdrop-filter: blur(6px);
-  border-radius: 8px;
-  padding: 6px 10px;
-  display: flex;
-  gap: 10px;
-  font-size: 10px;
-  color: var(--color-text-secondary);
-  box-shadow: 0 1px 6px rgba(0,0,0,0.1);
-  z-index: 90;
+  transition: all 0.2s;
   font-family: var(--font-body);
 }
-.map-legend-item {
+
+.ctrl-speed-btn.active {
+  border-color: var(--color-terracotta);
+  background: var(--color-sand-light);
+  color: var(--color-terracotta);
+}
+
+/* 重置按钮 */
+.ctrl-reset-btn {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(232, 226, 218, 0.4);
+  border-radius: 6px;
+  background: white;
+  color: var(--color-text-secondary);
+  font-size: 0.65rem;
+  cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  white-space: nowrap;
+  transition: all 0.15s;
+  font-family: var(--font-body);
 }
-.legend-line {
-  display: inline-block;
-  width: 16px;
-  height: 2px;
-  border-radius: 1px;
-}
-.legend-solid { background: #3b82f6; }
-.legend-dashed { background: repeating-linear-gradient(90deg, #10b981 0 4px, transparent 4px 8px); }
-.legend-dotted { background: repeating-linear-gradient(90deg, #f59e0b 0 2px, transparent 2px 5px); }
-.legend-interday { background: repeating-linear-gradient(90deg, #94a3b8 0 3px, transparent 3px 7px); }
-.legend-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  border: 1.5px solid white;
-  box-shadow: 0 0 2px rgba(0,0,0,0.2);
+
+.ctrl-reset-btn:hover {
+  background: var(--color-sand-light);
+  color: var(--color-charcoal);
 }
 
 .map-container {
@@ -2643,33 +2440,6 @@ onBeforeUnmount(() => {
   font-size: 11px;
   flex-shrink: 0;
   line-height: 1;
-}
-
-/* 重置视图按钮 */
-.map-reset-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 15;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid rgba(232,226,218,0.5);
-  background: rgba(255,255,255,0.92);
-  backdrop-filter: blur(12px);
-  color: var(--color-charcoal);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  transition: all 0.2s;
-}
-
-.map-reset-btn:hover {
-  background: white;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-  transform: scale(1.05);
 }
 
 /* Days list */

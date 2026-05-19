@@ -15,9 +15,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.models.schemas import TripPlanRequest, TripPlan, TripEditRequest
 from app.agents.trip_planner import TripPlannerAgent
+from app.agents.transport import estimate_transport
 from app.services.unsplash import UnsplashService
 from app.auth import hash_password, verify_password, create_access_token, require_user, get_current_user
 from app import database as db
+from app import templates as tpl
 
 logger = logging.getLogger(__name__)
 
@@ -138,21 +140,11 @@ async def get_route(origin: str, destination: str, mode: str = "driving", city: 
         if data.get("status") != "1" or not data.get("route"):
             info = data.get("info", "unknown")
             logger.warning(f"路线规划失败 [{mode}]: {info}")
-            # 驾车失败 → 降级到步行
-            if mode == "driving":
-                return await get_route(origin, destination, mode="walking", city=city)
-            # 公交失败 → 降级到驾车
-            if mode == "transit":
-                return await get_route(origin, destination, mode="driving", city=city)
             raise HTTPException(status_code=502, detail=f"路线规划失败: {info}")
 
         route = data["route"]
         paths = route.get("paths", [])
         if not paths:
-            if mode == "driving":
-                return await get_route(origin, destination, mode="walking", city=city)
-            if mode == "transit":
-                return await get_route(origin, destination, mode="driving", city=city)
             raise HTTPException(status_code=502, detail="未找到路线")
 
         # 提取坐标点
@@ -205,11 +197,7 @@ async def get_route(origin: str, destination: str, mode: str = "driving", city: 
         raise
     except Exception as e:
         logger.error(f"路线规划异常 [{mode}]: {e}")
-        if mode == "driving":
-            return await get_route(origin, destination, mode="walking", city=city)
-        if mode == "transit":
-            return await get_route(origin, destination, mode="driving", city=city)
-        raise HTTPException(status_code=500, detail="路线规划服务异常")
+        raise HTTPException(status_code=502, detail=f"路线规划服务异常: {str(e)}")
 
 
 @router.get("/trains")
@@ -365,12 +353,59 @@ async def create_trip_plan(request: TripPlanRequest, req: Request) -> TripPlan:
     user = get_current_user(req)
     user_id = user["user_id"] if user else None
 
-    logger.info(f"收到旅行规划请求: {request.city} {request.days}天")
+    logger.info(f"收到旅行规划请求: {request.city} {request.days}天 departure={request.departure_city}")
+
     try:
-        planner = _get_planner()
+        template = tpl.get_template(request.city)
+
+        if template and request.days <= len(template["days"]):
+            logger.info(f"命中模板: {request.city}，秒出方案")
+            from app.models.schemas import DayPlan, Attraction, Meal, WeatherInfo, Budget
+            template_days = template["days"][:request.days]
+            days = []
+            for i, td in enumerate(template_days):
+                attractions = [Attraction(**a) for a in td["attractions"]]
+                meals = [Meal(**m) for m in td["meals"]]
+                day_date = (
+                    request.start_date if not request.start_date
+                    else (__import__("datetime").datetime.strptime(request.start_date, "%Y-%m-%d")
+                          + __import__("datetime").timedelta(days=i)).strftime("%Y-%m-%d")
+                )
+                days.append(DayPlan(
+                    date=day_date,
+                    day_index=i,
+                    description=td["description"],
+                    transportation=td["transportation"],
+                    accommodation=td["accommodation"],
+                    attractions=attractions,
+                    meals=meals,
+                ))
+
+            weather_info = [WeatherInfo(date=day.date, day_weather="晴", night_weather="多云",
+                                        day_temp=25, night_temp=15,
+                                        wind_direction="南风", wind_power="1-3级") for day in days]
+            trip_plan = TripPlan(
+                city=request.city,
+                start_date=request.start_date,
+                end_date=request.end_date,
+                days=days,
+                weather_info=weather_info,
+                overall_suggestions=template.get("overall_suggestions", ""),
+            )
+
+            if request.departure_city and request.departure_city != request.city:
+                transport = estimate_transport(request.departure_city, request.city)
+                trip_plan.transport_info = transport
+                trip_plan.departure_city = request.departure_city
+
+            planner = _get_planner()
+            planner.update_budget(trip_plan, request.transportation)
+        else:
+            planner = _get_planner()
+            trip_plan = planner.plan_trip(request)
+            planner.update_budget(trip_plan, request.transportation)
+
         unsplash = _get_unsplash()
-        trip_plan = planner.plan_trip(request)
-        planner.update_budget(trip_plan, request.transportation)
         _enrich_images(trip_plan, request.city, unsplash)
 
         # 清理声明性文字

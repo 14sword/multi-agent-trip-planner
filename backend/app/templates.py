@@ -1,5 +1,6 @@
 """
 热门城市行程模板 — 秒出方案，不需要等 LLM。
+每个模板不含 transport_info 和 weather_info，由路由层根据请求动态注入。
 """
 TEMPLATES = {
     "北京": {

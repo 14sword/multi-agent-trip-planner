@@ -89,7 +89,7 @@
           </div>
 
           <!-- Transport Info -->
-          <div v-if="v.plan?.transport_info && v.plan.transport_info.estimated_cost > 0" class="transport-info">
+          <div v-if="v.plan?.transport_info && v.plan.transport_info.departure_city && v.plan.transport_info.departure_city !== v.plan.city" class="transport-info">
             <span class="transport-mode">{{ v.plan.transport_info.recommended_mode }}</span>
             <span class="transport-detail">{{ v.plan.transport_info.departure_city }} → {{ v.plan.transport_info.destination_city }}</span>
             <span class="transport-cost">约¥{{ v.plan.transport_info.estimated_cost }}</span>
